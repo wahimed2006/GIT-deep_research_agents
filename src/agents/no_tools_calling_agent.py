@@ -7,8 +7,8 @@ for basic conversational interactions.
 
 from typing import Any, Dict, List, Optional
 import ollama
-from agent import Agent
-from tools import AgentResponse
+from .agent import Agent
+from ..tools import AgentResponse
 from typing import override
 
 

@@ -7,8 +7,8 @@ with tool calling capabilities, including validation of model support.
 from typing import Any, Dict, List, Optional
 import requests
 import ollama
-from agent import Agent
-from tools import AgentResponse
+from .agent import Agent
+from ..tools import AgentResponse
 from typing import override
 
 

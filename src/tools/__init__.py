@@ -1,1 +1,1 @@
-from agent_response import *
+from .agent_response import AgentResponse

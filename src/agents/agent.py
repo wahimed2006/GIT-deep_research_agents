@@ -6,7 +6,7 @@ and interacts with local LLM models through the Ollama API.
 
 from typing import Dict, Any, List, Optional
 import ollama
-from tools import AgentResponse
+from ..tools import AgentResponse
 
 
 class Agent:
