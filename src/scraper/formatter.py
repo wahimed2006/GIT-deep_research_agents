@@ -4,10 +4,58 @@ This module provides functions to format extracted content into
 clean, structured Markdown optimized for LLM understanding.
 """
 
-from typing import Dict, Any, Optional
+from typing import Dict, Any, Optional, List
 from datetime import datetime
 from markdownify import markdownify
 
+
+# =============================================================================
+# CONFIGURATION CONSTANTS
+# =============================================================================
+
+# Output limits
+MAX_HEADINGS_IN_TOC: int = 15
+MAX_OUTPUT_LENGTH: int = 10000
+TRUNCATION_THRESHOLD_RATIO: float = 0.8
+
+# Section headers
+SECTION_TOC: str = "## Table of Contents"
+SECTION_CONTENT: str = "## Content"
+SECTION_LISTS: str = "## Lists"
+SECTION_TABLES: str = "## Tables"
+SECTION_LINKS: str = "## Related Links"
+
+# Section dividers
+SECTION_DIVIDER: str = "---"
+TRUNCATION_MESSAGE: str = "[Content truncated...]"
+
+# Metadata labels
+LABEL_AUTHOR: str = "**Author:**"
+LABEL_PUBLISHED: str = "**Published:**"
+LABEL_DESCRIPTION: str = "**Description:**"
+
+# List item prefix
+LIST_ITEM_PREFIX: str = "- "
+
+# Markdown table cell separator
+TABLE_CELL_SEP: str = " | "
+TABLE_DIVIDER_ROW: str = "---"
+
+# Heading styles
+HEADING_STYLE_ATX: str = "ATX"
+HEADING_STYLE_SETEXT: str = "SETEXT"
+
+# Default heading style
+DEFAULT_HEADING_STYLE: str = HEADING_STYLE_ATX
+
+# Markdownify options
+MARKDOWNIFY_BULLETS: str = "-"
+MARKDOWNIFY_STRIP_TAGS: List[str] = ["a"]
+
+
+# =============================================================================
+# FUNCTIONS
+# =============================================================================
 
 def format_metadata(metadata: Dict[str, Optional[str]]) -> str:
     """Format metadata as Markdown.
@@ -18,7 +66,7 @@ def format_metadata(metadata: Dict[str, Optional[str]]) -> str:
     Returns:
         Formatted Markdown string.
     """
-    lines = []
+    lines: List[str] = []
     
     if metadata.get("title"):
         lines.append(f"# {metadata['title']}")
@@ -26,19 +74,19 @@ def format_metadata(metadata: Dict[str, Optional[str]]) -> str:
     lines.append("")
     
     if metadata.get("author"):
-        lines.append(f"**Author:** {metadata['author']}")
+        lines.append(f"{LABEL_AUTHOR} {metadata['author']}")
     
     if metadata.get("published_date"):
-        lines.append(f"**Published:** {metadata['published_date']}")
+        lines.append(f"{LABEL_PUBLISHED} {metadata['published_date']}")
     
     if metadata.get("description"):
         lines.append("")
-        lines.append(f"**Description:** {metadata['description']}")
+        lines.append(f"{LABEL_DESCRIPTION} {metadata['description']}")
     
     return "\n".join(lines)
 
 
-def format_headings(headings: list[Dict[str, str]]) -> str:
+def format_headings(headings: List[Dict[str, str]]) -> str:
     """Format headings as Markdown table of contents.
     
     Args:
@@ -50,21 +98,21 @@ def format_headings(headings: list[Dict[str, str]]) -> str:
     if not headings:
         return ""
     
-    lines = []
-    lines.append("## Table of Contents")
+    lines: List[str] = []
+    lines.append(SECTION_TOC)
     lines.append("")
     
-    for h in headings[:15]:  # Limit to 15
-        lines.append(f"- {h['text']}")
+    for h in headings[:MAX_HEADINGS_IN_TOC]:
+        lines.append(f"{LIST_ITEM_PREFIX}{h['text']}")
     
     lines.append("")
-    lines.append("---")
+    lines.append(SECTION_DIVIDER)
     lines.append("")
     
     return "\n".join(lines)
 
 
-def format_paragraphs(paragraphs: list[str]) -> str:
+def format_paragraphs(paragraphs: List[str]) -> str:
     """Format paragraphs as Markdown.
     
     Args:
@@ -76,21 +124,21 @@ def format_paragraphs(paragraphs: list[str]) -> str:
     if not paragraphs:
         return ""
     
-    lines = []
-    lines.append("## Content")
+    lines: List[str] = []
+    lines.append(SECTION_CONTENT)
     lines.append("")
     
     for p in paragraphs:
         lines.append(p)
         lines.append("")
     
-    lines.append("---")
+    lines.append(SECTION_DIVIDER)
     lines.append("")
     
     return "\n".join(lines)
 
 
-def format_lists(lists: list[list[str]]) -> str:
+def format_lists(lists: List[List[str]]) -> str:
     """Format lists as Markdown.
     
     Args:
@@ -102,8 +150,8 @@ def format_lists(lists: list[list[str]]) -> str:
     if not lists:
         return ""
     
-    lines = []
-    lines.append("## Lists")
+    lines: List[str] = []
+    lines.append(SECTION_LISTS)
     lines.append("")
     
     for i, list_items in enumerate(lists, 1):
@@ -111,17 +159,17 @@ def format_lists(lists: list[list[str]]) -> str:
         lines.append("")
         
         for item in list_items:
-            lines.append(f"- {item}")
+            lines.append(f"{LIST_ITEM_PREFIX}{item}")
         
         lines.append("")
     
-    lines.append("---")
+    lines.append(SECTION_DIVIDER)
     lines.append("")
     
     return "\n".join(lines)
 
 
-def format_tables(tables: list[list[list[str]]]) -> str:
+def format_tables(tables: List[List[List[str]]]) -> str:
     """Format tables as Markdown.
     
     Args:
@@ -133,8 +181,8 @@ def format_tables(tables: list[list[list[str]]]) -> str:
     if not tables:
         return ""
     
-    lines = []
-    lines.append("## Tables")
+    lines: List[str] = []
+    lines.append(SECTION_TABLES)
     lines.append("")
     
     for i, table in enumerate(tables, 1):
@@ -144,22 +192,22 @@ def format_tables(tables: list[list[list[str]]]) -> str:
         # First row as header
         if table and table[0]:
             header = table[0]
-            lines.append("| " + " | ".join(header) + " |")
-            lines.append("| " + " | ".join(["---"] * len(header)) + " |")
+            lines.append(TABLE_CELL_SEP + TABLE_CELL_SEP.join(header) + TABLE_CELL_SEP)
+            lines.append(TABLE_CELL_SEP + TABLE_CELL_SEP.join([TABLE_DIVIDER_ROW] * len(header)) + TABLE_CELL_SEP)
             
             # Remaining rows as data
             for row in table[1:]:
-                lines.append("| " + " | ".join(row) + " |")
+                lines.append(TABLE_CELL_SEP + TABLE_CELL_SEP.join(row) + TABLE_CELL_SEP)
             
             lines.append("")
     
-    lines.append("---")
+    lines.append(SECTION_DIVIDER)
     lines.append("")
     
     return "\n".join(lines)
 
 
-def format_links(links: list[Dict[str, str]]) -> str:
+def format_links(links: List[Dict[str, str]]) -> str:
     """Format links as Markdown.
     
     Args:
@@ -171,15 +219,15 @@ def format_links(links: list[Dict[str, str]]) -> str:
     if not links:
         return ""
     
-    lines = []
-    lines.append("## Related Links")
+    lines: List[str] = []
+    lines.append(SECTION_LINKS)
     lines.append("")
     
     for link in links:
-        lines.append(f"- [{link['text']}]({link['href']})")
+        lines.append(f"{LIST_ITEM_PREFIX}[{link['text']}]({link['href']})")
     
     lines.append("")
-    lines.append("---")
+    lines.append(SECTION_DIVIDER)
     lines.append("")
     
     return "\n".join(lines)
@@ -189,7 +237,7 @@ def format_for_llm(
     structured_content: Dict[str, Any],
     url: str,
     fetch_method: str,
-    max_length: int = 10000
+    max_length: int = MAX_OUTPUT_LENGTH
 ) -> str:
     """Format structured content as Markdown for LLM consumption.
     
@@ -207,22 +255,23 @@ def format_for_llm(
         >>> md = format_for_llm(content, "https://example.com", "httpx")
         >>> print(md[:500])
     """
-    lines = []
+    lines: List[str] = []
     
     # Header with metadata
-    lines.append(f"# Page: {structured_content['metadata'].get('title', 'Untitled')}")
+    title = structured_content['metadata'].get('title', 'Untitled')
+    lines.append(f"# Page: {title}")
     lines.append(f"## URL: {url}")
     lines.append(f"## Fetched: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}")
     lines.append(f"## Method: {fetch_method}")
     lines.append("")
-    lines.append("---")
+    lines.append(SECTION_DIVIDER)
     lines.append("")
     
     # Metadata section
     meta_md = format_metadata(structured_content['metadata'])
     if meta_md:
         lines.append(meta_md)
-        lines.append("---")
+        lines.append(SECTION_DIVIDER)
         lines.append("")
     
     # Table of contents
@@ -256,15 +305,18 @@ def format_for_llm(
     if len(full_md) > max_length:
         # Truncate at a section boundary if possible
         truncated = full_md[:max_length]
-        last_section = truncated.rfind("---")
-        if last_section > max_length * 0.8:
+        last_section = truncated.rfind(SECTION_DIVIDER)
+        if last_section > max_length * TRUNCATION_THRESHOLD_RATIO:
             truncated = truncated[:last_section]
-        full_md = truncated + "\n\n[Content truncated...]"
+        full_md = truncated + "\n\n" + TRUNCATION_MESSAGE
     
     return full_md
 
 
-def html_to_markdown(html: str, heading_style: str = "ATX") -> str:
+def html_to_markdown(
+    html: str,
+    heading_style: str = DEFAULT_HEADING_STYLE
+) -> str:
     """Convert HTML to Markdown using markdownify.
     
     Args:
@@ -282,4 +334,9 @@ def html_to_markdown(html: str, heading_style: str = "ATX") -> str:
         
         Text
     """
-    return markdownify(html, heading_style=heading_style, bullets="-", strip=["a"])
+    return markdownify(
+        html,
+        heading_style=heading_style,
+        bullets=MARKDOWNIFY_BULLETS,
+        strip=MARKDOWNIFY_STRIP_TAGS
+    )
