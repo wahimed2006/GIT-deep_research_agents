@@ -3,7 +3,7 @@
 This module provides a UserInputAgent class that decomposes user queries
 into atomic, actionable sub-requests for downstream specialized agents.
 """
-
+# TODO add a deep-mode(recursive)
 import sys
 from pathlib import Path
 import re

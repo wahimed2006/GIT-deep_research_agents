@@ -1,2 +1,4 @@
 ollama
 requests
+duckduckgo-search
+ddgs
