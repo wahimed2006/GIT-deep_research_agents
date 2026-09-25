@@ -4,11 +4,13 @@ This module provides a ToolCallingAgent class that extends the base Agent
 with tool calling capabilities, including validation of model support.
 """
 
-from typing import Any, Dict, List, Optional, Iterator
+from typing import Any, Dict, List, Optional
 import requests
+import ollama
 from agent import Agent
 from tools import AgentResponse
 from typing import override
+
 
 class ToolCallingAgent(Agent):
     """An agent with tool calling capabilities.
@@ -154,34 +156,39 @@ class ToolCallingAgent(Agent):
         ]
     
     @override
-    def chat(self, query: str, stream=False) -> AgentResponse:
+    def chat(
+        self,
+        query: str,
+        stream: bool = False
+    ) -> AgentResponse[None]:
         """Send a user message and get the assistant's response with tool calling.
         
-        This method extends the base chat method to support tool calling.
-        If tools are provided (or if the agent has default tools), they will
-        be passed to the Ollama API for structured function calling.
+        This method overrides the base chat method to support tool calling.
+        Tools defined at initialization are passed to the Ollama API.
         
         Args:
             query: The user's message or question to send to the agent.
-            stream: Whether to stream the response token by token.
-                   Defaults to True for real-time output.
-            tools: Optional list of tools to use for this specific call.
-                  If None, uses the agent's default tools from initialization.
+            stream: Whether to stream the response. Defaults to False because
+                   tool calls are easier to handle in non-streaming mode.
         
         Returns:
-            The complete assistant response as a string.
+            An AgentResponse containing the assistant's response and any
+            requested tool calls.
         
         Raises:
-            ValueError: If tools are provided but the model doesn't support them.
+            ValueError: If the model does not support tool calling.
+            Exception: Propagates errors from the Ollama API call.
         
         Example:
             >>> agent = ToolCallingAgent("llama3.1:8b", tools=[...])
             >>> response = agent.chat("What's the weather in Paris?")
+            >>> if response.tool_calls:
+            ...     print("Model requested tools:", response.tool_calls)
         """
-        import ollama
-        
-        # Use provided tools or fall back to instance tools
-        active_tools = tools if tools is not None else self.tools
+        if stream:
+            raise RuntimeError(
+                "ToolCallingAgent.chat() requires stream=False to handle tool calls."
+            )
         
         # Append user message to conversation history
         self.messages.append({"role": "user", "content": query})
@@ -190,25 +197,29 @@ class ToolCallingAgent(Agent):
             response = ollama.chat(
                 model=self.model_name,
                 messages=self.messages,
-                tools=active_tools
+                tools=self.tools,
+                stream=False
             )
         except Exception as e:
             # Remove the user message if the API call fails
             self.messages.pop()
             raise e
         
-        message = response.get("message", {})
-        tool_calls = message.get("tool_calls", [])
+        # Extract message and tool calls from response
+        message: Dict[str, Any] = response.get("message", {}) if isinstance(response, dict) else {}
+        content: str = message.get("content", "")
+        tool_calls: List[Dict[str, Any]] = message.get("tool_calls", [])
         
-        if not tool_calls:
-            content = message.get("content", "")
-            self.messages.append({"role": "assistant", "content": content})
-            print(f"Agent: {content}")
-            return content
+        # Append assistant message to history
+        self.messages.append({"role": "assistant", "content": content})
         
-        self.messages.append(message)
-        
-        return full_response
+        # Build and return standardized response
+        return self._build_response(
+            content=content,
+            raw_response=response,
+            tool_calls=tool_calls,
+            metadata={"model": self.model_name}
+        )
 
 
 if __name__ == "__main__":
@@ -235,7 +246,7 @@ if __name__ == "__main__":
     
     try:
         agent = ToolCallingAgent(
-            "gemma2:latest",
+            "llama3.1:8b",
             tools=weather_tool,
             system_prompt="You are a helpful assistant with access to weather tools."
         )
@@ -243,6 +254,9 @@ if __name__ == "__main__":
         
         # Test chat
         response = agent.chat("What's the weather in Paris?")
+        
+        print(f"\nContent: {response.content}")
+        print(f"Tool calls: {response.tool_calls}")
         
     except ValueError as e:
         print(f"Error: {e}")
