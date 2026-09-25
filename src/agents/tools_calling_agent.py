@@ -4,10 +4,9 @@ This module provides a ToolCallingAgent class that extends the base Agent
 with tool calling capabilities, including validation of model support.
 """
 
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, List, Optional, Iterator
 import requests
 from agent import Agent
-import ollama
 
 
 class ToolCallingAgent(Agent):
@@ -182,6 +181,8 @@ class ToolCallingAgent(Agent):
             >>> agent = ToolCallingAgent("llama3.1:8b", tools=[...])
             >>> response = agent.chat("What's the weather in Paris?")
         """
+        import ollama
+        
         # Use provided tools or fall back to instance tools
         active_tools = tools if tools is not None else self.tools
         
@@ -204,13 +205,18 @@ class ToolCallingAgent(Agent):
         
         if stream:
             print("Agent: ", end="", flush=True)
+            # Type-safe iteration over streaming response
+            chunk: Dict[str, Any]
             for chunk in response:  # type: ignore
-                content: str = chunk.get("message", {}).get("content", "")
+                message: Dict[str, Any] = chunk.get("message", {})
+                content: str = message.get("content", "")
                 full_response += content
                 print(content, end="", flush=True)
             print()
         else:
-            full_response = response.get("message", {}).get("content", "")  # type: ignore
+            # Non-streaming response
+            message: Dict[str, Any] = response.get("message", {}) if isinstance(response, dict) else {}  # type: ignore
+            full_response = message.get("content", "")
             print("Agent: ")
             print(full_response)
         
@@ -244,7 +250,7 @@ if __name__ == "__main__":
     
     try:
         agent = ToolCallingAgent(
-            "qwen3:4b ",
+            "gemma2:latest",
             tools=weather_tool,
             system_prompt="You are a helpful assistant with access to weather tools."
         )
