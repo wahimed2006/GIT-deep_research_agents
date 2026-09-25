@@ -5,8 +5,12 @@ and extracting semantically meaningful content.
 """
 
 from bs4 import BeautifulSoup, Tag
-from typing import Dict, Any, List, Optional, Set, Union
+from typing import Dict, Any, List, Optional, Set
 
+
+# =============================================================================
+# CONFIGURATION CONSTANTS
+# =============================================================================
 
 # Elements to always remove (noise)
 IGNORE_TAGS: Set[str] = {
@@ -32,6 +36,39 @@ CONDITIONAL_TAGS: Set[str] = {'div', 'span', 'a', 'img', 'figure', 'ul', 'ol'}
 # Minimum text length to keep an element
 MIN_TEXT_LENGTH: int = 50
 
+# Content context tags (for links)
+CONTENT_CONTEXT_TAGS: Set[str] = {'p', 'li', 'article', 'section', 'main'}
+
+# Navigation tags to skip for links
+NAVIGATION_TAGS: Set[str] = {'nav', 'header', 'footer'}
+
+# Heading tags
+HEADING_TAGS: List[str] = ['h1', 'h2', 'h3', 'h4', 'h5', 'h6']
+
+# List tags
+LIST_TAGS: Set[str] = {'ul', 'ol'}
+
+# Table cell tags
+TABLE_CELL_TAGS: Set[str] = {'td', 'th'}
+
+# Metadata tag names
+META_DESCRIPTION_NAME: str = 'description'
+META_AUTHOR_NAME: str = 'author'
+META_PUBLISHED_PROPERTY: str = 'article:published_time'
+
+# Output limits
+MAX_HEADINGS_TEXT_LENGTH: int = 200
+MAX_PARAGRAPHS: int = 30
+MAX_LISTS: int = 10
+MAX_TABLES: int = 5
+MAX_LINKS: int = 20
+MAX_BODY_TEXT_LENGTH: int = 15000
+MAX_LINK_TEXT_LENGTH: int = 100
+
+
+# =============================================================================
+# FUNCTIONS
+# =============================================================================
 
 def should_keep_element(element: Tag) -> bool:
     """Determine if an HTML element should be kept.
@@ -66,7 +103,7 @@ def should_keep_element(element: Tag) -> bool:
         # Keep <a> if in content context (not navigation)
         if element.name == 'a':
             parent = element.parent
-            if parent and parent.name in ['p', 'li', 'article', 'section', 'main']:
+            if parent and parent.name in CONTENT_CONTEXT_TAGS:
                 return True
         
         # Keep <img> if has alt text or in figure
@@ -171,17 +208,17 @@ def extract_metadata(soup: BeautifulSoup) -> Dict[str, Optional[str]]:
         metadata["title"] = title_tag.get_text(strip=True)
     
     # Extract meta description
-    desc_tag = soup.find('meta', attrs={'name': 'description'})
+    desc_tag = soup.find('meta', attrs={'name': META_DESCRIPTION_NAME})
     if desc_tag:
         metadata["description"] = _get_meta_content(desc_tag)
     
     # Extract author
-    author_tag = soup.find('meta', attrs={'name': 'author'})
+    author_tag = soup.find('meta', attrs={'name': META_AUTHOR_NAME})
     if author_tag:
         metadata["author"] = _get_meta_content(author_tag)
     
     # Try to find article:published_time
-    pub_tag = soup.find('meta', attrs={'property': 'article:published_time'})
+    pub_tag = soup.find('meta', attrs={'property': META_PUBLISHED_PROPERTY})
     if pub_tag:
         metadata["published_date"] = _get_meta_content(pub_tag)
     
@@ -205,9 +242,9 @@ def extract_content_structure(html: str) -> Dict[str, Any]:
     
     # Extract headings
     headings: List[Dict[str, str]] = []
-    for h in soup.find_all(['h1', 'h2', 'h3', 'h4', 'h5', 'h6']):
+    for h in soup.find_all(HEADING_TAGS):
         text = h.get_text(strip=True)
-        if text and len(text) < 200:
+        if text and len(text) < MAX_HEADINGS_TEXT_LENGTH:
             level = h.name if isinstance(h.name, str) else "h1"
             headings.append({
                 "level": level,
@@ -223,7 +260,7 @@ def extract_content_structure(html: str) -> Dict[str, Any]:
     
     # Extract lists
     lists: List[List[str]] = []
-    for list_elem in soup.find_all(['ul', 'ol']):
+    for list_elem in soup.find_all(LIST_TAGS):
         items = [li.get_text(strip=True) for li in list_elem.find_all('li')]
         if items:
             lists.append(items)
@@ -233,7 +270,7 @@ def extract_content_structure(html: str) -> Dict[str, Any]:
     for table in soup.find_all('table'):
         rows: List[List[str]] = []
         for tr in table.find_all('tr'):
-            cells = [td.get_text(strip=True) for td in tr.find_all(['td', 'th'])]
+            cells = [td.get_text(strip=True) for td in tr.find_all(TABLE_CELL_TAGS)]
             if cells:
                 rows.append(cells)
         if rows:
@@ -243,20 +280,20 @@ def extract_content_structure(html: str) -> Dict[str, Any]:
     links: List[Dict[str, str]] = []
     for a in soup.find_all('a', href=True):
         # Skip nav/header/footer links
-        parent = a.find_parent(['nav', 'header', 'footer'])
+        parent = a.find_parent(NAVIGATION_TAGS)
         if parent:
             continue
         
         text = a.get_text(strip=True)
         href = a.get('href')
-        if text and len(text) < 100 and href and isinstance(href, str):
+        if text and len(text) < MAX_LINK_TEXT_LENGTH and href and isinstance(href, str):
             links.append({
                 "text": text,
                 "href": href
             })
     
-    # Limit to first 20 links
-    links = links[:20]
+    # Limit outputs
+    links = links[:MAX_LINKS]
     
     # Extract body text
     body_text = soup.get_text(separator=' ', strip=True)
@@ -264,10 +301,10 @@ def extract_content_structure(html: str) -> Dict[str, Any]:
     
     return {
         "metadata": metadata,
-        "headings": headings,
-        "paragraphs": paragraphs[:30],  # Limit to 30
-        "lists": lists[:10],  # Limit to 10
-        "tables": tables[:5],  # Limit to 5
+        "headings": headings[:MAX_PARAGRAPHS],
+        "paragraphs": paragraphs[:MAX_PARAGRAPHS],
+        "lists": lists[:MAX_LISTS],
+        "tables": tables[:MAX_TABLES],
         "links": links,
-        "body_text": body_text[:15000]  # Limit to 15k chars
+        "body_text": body_text[:MAX_BODY_TEXT_LENGTH]
     }
