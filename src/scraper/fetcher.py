@@ -6,10 +6,10 @@ automatically choosing between httpx (fast) and Playwright (for JS-heavy sites).
 
 import httpx
 from playwright.sync_api import sync_playwright
-from typing import Optional, Dict, Any
+from typing import Literal, Optional, Dict, Any
 from datetime import datetime
 
-
+WaitUntilState = Literal['commit', 'domcontentloaded', 'load', 'networkidle']
 class FetchError(Exception):
     """Raised when fetching content fails."""
     pass
@@ -64,7 +64,7 @@ def fetch_with_httpx(
 def fetch_with_playwright(
     url: str,
     timeout: int = 30,
-    wait_until: str = "domcontentloaded"
+    wait_until: WaitUntilState | None = "domcontentloaded"
 ) -> Dict[str, Any]:
     """Fetch HTML using Playwright (for JavaScript-heavy sites).
     
@@ -104,7 +104,7 @@ def fetch_with_playwright(
             response = page.goto(
                 url,
                 timeout=timeout * 1000,
-                wait_until=wait_until
+                wait_until = wait_until
             )
             
             # Wait for network to be idle (JS loaded)
