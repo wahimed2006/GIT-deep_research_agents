@@ -4,7 +4,7 @@ This module provides an Agent class that maintains conversation history
 and interacts with local LLM models through the Ollama API.
 """
 
-from typing import Optional, Iterator, Dict, Any
+from typing import Dict, Any
 import ollama
 
 
