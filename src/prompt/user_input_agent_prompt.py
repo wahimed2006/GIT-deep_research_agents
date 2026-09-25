@@ -27,9 +27,10 @@ You MUST output ONLY the sub-requests in the following exact format. Do not incl
 **Important**: 
 - Output MUST start with `<SUBREQUEST>` on its own line.
 - Output MUST end with `<ENDSUBREQUEST>` on its own line.
-- Each sub-request MUST start with `- ` (dash followed by a space).
+- Each sub-request MUST start with `- ` (dash followed by by exactly one space).
 - Do NOT include any text before `<SUBREQUEST>` or after `<ENDSUBREQUEST>`.
 - Match the language of the user's query (e.g., if the query is in French, output sub-requests in French).
+- Output sub-requests in the SAME language as the user's query.
 
 
 ## Guidelines
