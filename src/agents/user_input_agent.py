@@ -6,6 +6,8 @@ into atomic, actionable sub-requests for downstream specialized agents.
 
 import sys
 from pathlib import Path
+import re
+from typing import List
 
 if __package__ is None or __package__ == "":
     sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
@@ -40,6 +42,36 @@ class UserInputAgent(SimpleAgent):
         """
         super().__init__(model_name, INPUT_AGENT_PROMPT)
 
+    def parse_subrequests(self, text: str) -> List[str]:
+        """Extract sub-requests from the agent's output.
+        
+        Args:
+            text: Raw output from the UserInputAgent containing
+                <SUBREQUEST>...</ENDSUBREQUEST> block.
+        
+        Returns:
+            List of individual sub-request strings.
+        
+        Example:
+            >>> text = "<SUBREQUEST>\\n- Query 1\\n- Query 2\\n<ENDSUBREQUEST>"
+            >>> parse_subrequests(text)
+            ['Query 1', 'Query 2']
+        """
+        # Extract content between tags
+        match = re.search(r"<SUBREQUEST>(.*?)<ENDSUBREQUEST>", text, re.DOTALL)
+        if not match:
+            return []
+        
+        content = match.group(1)
+        
+        # Extract lines starting with "- "
+        subrequests = []
+        for line in content.strip().split("\n"):
+            line = line.strip()
+            if line.startswith("- "):
+                subrequests.append(line[2:].strip())
+        
+        return subrequests
 
 if __name__ == "__main__":
     agent = UserInputAgent("gemma2:latest")
