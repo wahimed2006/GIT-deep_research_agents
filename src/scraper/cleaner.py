@@ -58,11 +58,11 @@ META_PUBLISHED_PROPERTY: str = 'article:published_time'
 
 # Output limits
 MAX_HEADINGS_TEXT_LENGTH: int = 200
-MAX_PARAGRAPHS: int = 30
-MAX_LISTS: int = 10
-MAX_TABLES: int = 5
-MAX_LINKS: int = 20
-MAX_BODY_TEXT_LENGTH: int = 15000
+MAX_PARAGRAPHS: int = 60
+MAX_LISTS: int = 50
+MAX_TABLES: int = 30
+MAX_LINKS: int = 60
+MAX_BODY_TEXT_LENGTH: int = 25000
 MAX_LINK_TEXT_LENGTH: int = 100
 
 
@@ -202,10 +202,30 @@ def extract_metadata(soup: BeautifulSoup) -> Dict[str, Optional[str]]:
         "published_date": None
     }
     
-    # Extract title
+    # Priority 1: <title> tag
     title_tag = soup.find('title')
     if title_tag:
-        metadata["title"] = title_tag.get_text(strip=True)
+        title_text = title_tag.get_text(strip=True)
+        if title_text:
+            metadata["title"] = title_text
+    
+    # Priority 2: og:title meta
+    if not metadata["title"]:
+        og_title = soup.find('meta', attrs={'property': 'og:title'})
+        if og_title:
+            metadata["title"] = _get_meta_content(og_title)
+    
+    # Priority 3: First h1
+    if not metadata["title"]:
+        h1 = soup.find('h1')
+        if h1:
+            metadata["title"] = h1.get_text(strip=True)[:100]
+    
+    # Fallback: og:site_name
+    if not metadata["title"]:
+        site_meta = soup.find('meta', attrs={'property': 'og:site_name'})
+        if site_meta:
+            metadata["title"] = _get_meta_content(site_meta)
     
     # Extract meta description
     desc_tag = soup.find('meta', attrs={'name': META_DESCRIPTION_NAME})
@@ -223,8 +243,6 @@ def extract_metadata(soup: BeautifulSoup) -> Dict[str, Optional[str]]:
         metadata["published_date"] = _get_meta_content(pub_tag)
     
     return metadata
-
-
 def extract_content_structure(html: str) -> Dict[str, Any]:
     """Extract structured content from HTML.
     

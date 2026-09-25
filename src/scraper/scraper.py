@@ -199,6 +199,7 @@ if __name__ == "__main__":
             print(f"  Title: {result['structured']['metadata'].get('title', 'N/A')}")
             print(f"  Paragraphs: {len(result['structured']['paragraphs'])}")
             print(f"  Markdown length: {len(result['markdown']) if result['markdown'] else 0}")
+            print(result)
         else:
             print(f"  ✗ Failed: {result['error']}")
         
