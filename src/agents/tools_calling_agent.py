@@ -152,12 +152,7 @@ class ToolCallingAgent(Agent):
             "glm-5.2:9b",
         ]
     
-    def chat(
-        self,
-        query: str,
-        stream: bool = True,
-        tools: Optional[List[Dict[str, Any]]] = None
-    ) -> str:
+    def chat(self, query: str, tools: Optional[List[Dict[str, Any]]] = None) -> str:
         """Send a user message and get the assistant's response with tool calling.
         
         This method extends the base chat method to support tool calling.
@@ -193,35 +188,23 @@ class ToolCallingAgent(Agent):
             response = ollama.chat(
                 model=self.model_name,
                 messages=self.messages,
-                tools=active_tools,
-                stream=stream
+                tools=active_tools
             )
         except Exception as e:
             # Remove the user message if the API call fails
             self.messages.pop()
             raise e
         
-        full_response = ""
+        message = response.get("message", {})
+        tool_calls = message.get("tool_calls", [])
         
-        if stream:
-            print("Agent: ", end="", flush=True)
-            # Type-safe iteration over streaming response
-            chunk: Dict[str, Any]
-            for chunk in response:  # type: ignore
-                message: Dict[str, Any] = chunk.get("message", {})
-                content: str = message.get("content", "")
-                full_response += content
-                print(content, end="", flush=True)
-            print()
-        else:
-            # Non-streaming response
-            message: Dict[str, Any] = response.get("message", {}) if isinstance(response, dict) else {}  # type: ignore
-            full_response = message.get("content", "")
-            print("Agent: ")
-            print(full_response)
+        if not tool_calls:
+            content = message.get("content", "")
+            self.messages.append({"role": "assistant", "content": content})
+            print(f"Agent: {content}")
+            return content
         
-        # Append assistant response to conversation history
-        self.messages.append({"role": "assistant", "content": full_response})
+        self.messages.append(message)
         
         return full_response
 
