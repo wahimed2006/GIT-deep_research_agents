@@ -6,18 +6,75 @@ automatically choosing between httpx (fast) and Playwright (for JS-heavy sites).
 
 import httpx
 from playwright.sync_api import sync_playwright
-from typing import Literal, Optional, Dict, Any
+from typing import Literal, Optional, Dict, Any, List, Set
 from datetime import datetime
 
+
+# =============================================================================
+# TYPE ALIASES
+# =============================================================================
+
 WaitUntilState = Literal['commit', 'domcontentloaded', 'load', 'networkidle']
+
+
+# =============================================================================
+# CONFIGURATION CONSTANTS
+# =============================================================================
+
+# Timeouts
+DEFAULT_HTTPX_TIMEOUT: int = 10
+DEFAULT_PLAYWRIGHT_TIMEOUT: int = 30
+DEFAULT_CONTENT_MULTIPLIER: float = 1.5
+
+# Browser arguments (Playwright)
+BROWSER_ARGS: List[str] = [
+    "--no-sandbox",
+    "--disable-setuid-sandbox",
+    "--disable-dev-shm-usage",
+    "--disable-accelerated-2d-canvas",
+    "--disable-gpu"
+]
+
+# User agent
+USER_AGENT: str = "Mozilla/5.0 (compatible; ResearchBot/1.0)"
+
+# JavaScript detection
+JS_FRAMEWORKS: Set[str] = {
+    'react', 'react-dom', 'next.js', 'gatsby',
+    'vue', 'vue-router', 'nuxt',
+    'angular', '@angular',
+    'svelte',
+    'webpack', 'babel'
+}
+
+LOADING_INDICATORS: Set[str] = {
+    'loading...', 'loading-spinner', 'loading-container',
+    'app-root', 'app-loading'
+}
+
+JS_SIGNATURES: Set[str] = {'fetch(', 'axios'}
+
+# Root div detection
+ROOT_DIV_PATTERNS: Set[str] = {'id="root"', "id='root'"}
+MAX_EMPTY_ROOT_LENGTH: int = 2000
+
+
+# =============================================================================
+# EXCEPTIONS
+# =============================================================================
+
 class FetchError(Exception):
     """Raised when fetching content fails."""
     pass
 
 
+# =============================================================================
+# FUNCTIONS
+# =============================================================================
+
 def fetch_with_httpx(
     url: str,
-    timeout: int = 10,
+    timeout: int = DEFAULT_HTTPX_TIMEOUT,
     follow_redirects: bool = True
 ) -> Dict[str, Any]:
     """Fetch HTML using httpx (fast, for static sites).
@@ -38,9 +95,7 @@ def fetch_with_httpx(
             url,
             timeout=timeout,
             follow_redirects=follow_redirects,
-            headers={
-                "User-Agent": "Mozilla/5.0 (compatible; ResearchBot/1.0)"
-            }
+            headers={"User-Agent": USER_AGENT}
         )
         response.raise_for_status()
         
@@ -63,7 +118,7 @@ def fetch_with_httpx(
 
 def fetch_with_playwright(
     url: str,
-    timeout: int = 30,
+    timeout: int = DEFAULT_PLAYWRIGHT_TIMEOUT,
     wait_until: WaitUntilState | None = "domcontentloaded"
 ) -> Dict[str, Any]:
     """Fetch HTML using Playwright (for JavaScript-heavy sites).
@@ -82,39 +137,24 @@ def fetch_with_playwright(
     """
     try:
         with sync_playwright() as p:
-            browser = p.chromium.launch(
-                headless=True,
-                args=[
-                    "--no-sandbox",
-                    "--disable-setuid-sandbox",
-                    "--disable-dev-shm-usage",
-                    "--disable-accelerated-2d-canvas",
-                    "--disable-gpu"
-                ]
-            )
+            browser = p.chromium.launch(headless=True, args=BROWSER_ARGS)
             
             page = browser.new_page()
             
-            # Set user agent
-            page.set_extra_http_headers({
-                "User-Agent": "Mozilla/5.0 (compatible; ResearchBot/1.0)"
-            })
+            page.set_extra_http_headers({"User-Agent": USER_AGENT})
             
-            # Navigate to page
             response = page.goto(
                 url,
                 timeout=timeout * 1000,
-                wait_until = wait_until
+                wait_until=wait_until
             )
             
             # Wait for network to be idle (JS loaded)
             try:
                 page.wait_for_load_state("networkidle", timeout=timeout * 1000)
             except Exception:
-                # Not critical if networkidle times out
                 pass
             
-            # Get HTML and status
             html = page.content()
             status_code = response.status if response else 0
             
@@ -144,46 +184,34 @@ def is_js_heavy(html: str) -> bool:
     """
     html_lower = html.lower()
     
-    # Framework signatures
-    frameworks = [
-        'react', 'react-dom', 'next.js', 'gatsby',
-        'vue', 'vue-router', 'nuxt',
-        'angular', '@angular',
-        'svelte',
-        'webpack', 'babel'
-    ]
-    
     # Check for framework usage
-    for framework in frameworks:
+    for framework in JS_FRAMEWORKS:
         if framework in html_lower:
             return True
     
     # Check for empty body with root div
-    if 'id="root"' in html_lower or "id='root'" in html_lower:
-        if len(html.strip()) < 2000:
-            return True
+    for pattern in ROOT_DIV_PATTERNS:
+        if pattern in html_lower:
+            if len(html.strip()) < MAX_EMPTY_ROOT_LENGTH:
+                return True
     
     # Check for loading indicators
-    loading_indicators = [
-        'loading...', 'loading-spinner', 'loading-container',
-        'app-root', 'app-loading'
-    ]
-    
-    for indicator in loading_indicators:
+    for indicator in LOADING_INDICATORS:
         if indicator in html_lower:
             return True
     
     # Check for inline scripts with fetch/axios
-    if 'fetch(' in html_lower or 'axios' in html_lower:
-        return True
+    for signature in JS_SIGNATURES:
+        if signature in html_lower:
+            return True
     
     return False
 
 
 def fetch_content(
     url: str,
-    timeout_httpx: int = 10,
-    timeout_playwright: int = 30,
+    timeout_httpx: int = DEFAULT_HTTPX_TIMEOUT,
+    timeout_playwright: int = DEFAULT_PLAYWRIGHT_TIMEOUT,
     force_playwright: bool = False
 ) -> Dict[str, Any]:
     """Fetch HTML content with automatic JS detection.
@@ -231,10 +259,9 @@ def fetch_content(
             try:
                 pw_result = fetch_with_playwright(url, timeout=timeout_playwright)
                 # Use Playwright result if it has more content
-                if len(pw_result["html"]) > len(html) * 1.5:
+                if len(pw_result["html"]) > len(html) * DEFAULT_CONTENT_MULTIPLIER:
                     return pw_result
             except FetchError:
-                # Stick with httpx result
                 pass
         
         return result
