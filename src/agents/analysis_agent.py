@@ -6,7 +6,7 @@ the relevance of search results against a user query.
 
 import sys
 from pathlib import Path
-
+from typing import List, Dict, Any
 
 if __package__ is None or __package__ == "":
     sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
@@ -35,6 +35,72 @@ class AnalysisWebSearchAgent(SimpleAgent):
             model_name: The name of the Ollama model to use.
         """
         super().__init__(model_name, SEARCH_AGENT_PROMPT)
+        
+    def web_search_score(
+        self,
+        query: str,
+        web_search_result: List[Dict[str, Any]]
+    ) -> List[Dict[str, Any]]:
+        """Score multiple search results and return them with relevance scores.
+        
+        Args:
+            query: The user's search query.
+            web_search_result: List of search results, each containing 'title',
+                              'link', and 'body' keys.
+        
+        Returns:
+            List of search results with an added 'relevance_score' key,
+            sorted by score in descending order.
+        
+        Raises:
+            ScoreParseError: If any result's score cannot be parsed.
+        
+        Example:
+            >>> agent = AnalysisWebSearchAgent("gemma2:latest")
+            >>> results = [
+            ...     {"title": "Bitcoin Price", "link": "https://...", "body": "..."},
+            ...     {"title": "Python Tutorial", "link": "https://...", "body": "..."}
+            ... ]
+            >>> scored = agent.web_search_score("Bitcoin price", results)
+            >>> for r in scored:
+            ...     print(f"{r['relevance_score']}/100 - {r['title']}")
+        """
+        scored_results = []
+        
+        for search in web_search_result:
+            link = search.get('link', '')
+            title = search.get('title', '')
+            body = search.get('body', '')
+            
+            try:
+                score = self.score_relevance(
+                    query=query,
+                    title=title,
+                    link=link,
+                    body=body
+                )
+                
+                # Add score to result
+                result_with_score = {**search, 'relevance_score': score}
+                scored_results.append(result_with_score)
+            
+            except ScoreParseError as e:
+                # Re-raise to let caller handle parsing failures
+                raise e
+            
+            except Exception as e:
+                # Add with error flag but continue processing
+                result_with_score = {
+                    **search,
+                    'relevance_score': 50,
+                    'score_error': str(e)
+                }
+                scored_results.append(result_with_score)
+        
+        # Sort by relevance score descending
+        scored_results.sort(key=lambda x: x['relevance_score'], reverse=True)
+        return scored_results
+            
 
     def score_relevance(self,  
         query: str,
