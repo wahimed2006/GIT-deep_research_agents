@@ -115,22 +115,73 @@ if __name__ == "__main__":
     agent = AnalysisWebSearchAgent("gemma2:latest")
     
     print("AnalysisWebSearchAgent initialized.\n")
-    print("Type 'quit' or 'exit' to end.\n")
+    print("Enter query, title, link, and body to score relevance.\n")
+    print("Type 'quit' or 'exit' at any prompt to end.\n")
+    
+    test_data = {
+        "query": "Bitcoin price today",
+        "title": "Bitcoin Price Today - Live BTC Price Chart",
+        "link": "https://coinmarketcap.com/currencies/bitcoin/",
+        "body": "Bitcoin price today is $42,350 USD with a 24-hour trading volume of $15B. Price increased by 3.5% in the last 24h."
+    }
     
     while True:
         try:
-            query = input("Query: ")
+            print("\n--- Test Data ---")
+            print(f"Query: {test_data['query']}")
+            print(f"Title: {test_data['title']}")
+            print(f"Link: {test_data['link']}")
+            print(f"Body: {test_data['body'][:80]}...")
+            print("-----------------\n")
+            
+            cmd = input("Enter 'edit' to modify test data, 'score' to calculate score, or 'quit' to exit: ")
+            
+            if cmd.strip().lower() in ("quit", "exit"):
+                print("Goodbye!")
+                break
+            
+            if cmd.strip().lower() == "edit":
+                print("\nEnter new values (press Enter to keep current value):\n")
+                
+                new_query = input(f"Query [{test_data['query']}]: ").strip()
+                if new_query:
+                    test_data['query'] = new_query
+                
+                new_title = input(f"Title [{test_data['title']}]: ").strip()
+                if new_title:
+                    test_data['title'] = new_title
+                
+                new_link = input(f"Link [{test_data['link']}]: ").strip()
+                if new_link:
+                    test_data['link'] = new_link
+                
+                new_body = input(f"Body [{test_data['body']}]: ").strip()
+                if new_body:
+                    test_data['body'] = new_body
+                
+                continue
+            
+            if cmd.strip().lower() == "score":
+                print("\nCalculating relevance score...\n")
+                
+                try:
+                    score = agent.score_relevance(
+                        query=test_data['query'],
+                        title=test_data['title'],
+                        link=test_data['link'],
+                        body=test_data['body']
+                    )
+                    print(f"✓ Relevance Score: {score}/100\n")
+                
+                except ScoreParseError as e:
+                    print(f"✗ Parse Error: {e}\n")
+                
+                except Exception as e:
+                    print(f"✗ Error: {e}\n")
+            
+            else:
+                print("Invalid command. Use 'edit', 'score', or 'quit'.\n")
+        
         except (EOFError, KeyboardInterrupt):
             print("\nGoodbye!")
             break
-        
-        if query.strip().lower() in ("quit", "exit"):
-            print("Goodbye!")
-            break
-        
-        try:
-            response = agent.chat(query, stream=True)
-            print(f"\nResponse: {response.content}\n")
-        
-        except Exception as e:
-            print(f"Error: {e}\n")
