@@ -96,8 +96,12 @@ class SimpleAgent(Agent):
                 print(content, end="", flush=True)
             print()  # Newline after streaming completes
         else:
-            message: Dict[str, Any] = response.get("message", {}) if isinstance(response, dict) else {}  # type: ignore
-            full_response = message.get("content", "")
+            if isinstance(response, dict):
+                message = response.get("message", {})
+                full_response = str(message.get("content", "") or "")
+            else:
+                message = getattr(response, "message", None)
+                full_response = str(getattr(message, "content", "") or "")
             print("Agent: ")
             print(full_response)
         

@@ -56,7 +56,7 @@ class AnalysisWebSearchAgent(SimpleAgent):
             ScoreParseError: If any result's score cannot be parsed.
         
         Example:
-            >>> agent = AnalysisWebSearchAgent("gemma2:latest")
+            >>> agent = AnalysisWebSearchAgent("llama3.1:8b")
             >>> results = [
             ...     {"title": "Bitcoin Price", "link": "https://...", "body": "..."},
             ...     {"title": "Python Tutorial", "link": "https://...", "body": "..."}
@@ -129,7 +129,6 @@ class AnalysisWebSearchAgent(SimpleAgent):
             ... )
             >>> print(f"Relevance: {score}/100")
         """
-        agent = AnalysisWebSearchAgent(self.model_name)
         
         context = f"""
             User Query: {query}
@@ -140,7 +139,7 @@ class AnalysisWebSearchAgent(SimpleAgent):
             - Snippet: {body}
         """
         
-        response = agent.chat(context, stream=False)
+        response = self.chat(context, stream=False)
         return self.parse_score(response.content)
         
     def parse_score(self, text: str) -> int:
@@ -178,7 +177,7 @@ class AnalysisWebSearchAgent(SimpleAgent):
         raise ScoreParseError(f"Could not parse score from response: {text[:200]}")
 
 if __name__ == "__main__":
-    agent = AnalysisWebSearchAgent("gemma2:latest")
+    agent = AnalysisWebSearchAgent("llama3.1:8b")
     
     print("AnalysisWebSearchAgent initialized.\n")
     print("Enter query, title, link, and body to score relevance.\n")

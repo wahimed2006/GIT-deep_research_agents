@@ -16,12 +16,12 @@ class Agent:
     history including system prompts, user messages, and assistant responses.
     
     Attributes:
-        model_name: The name of the Ollama model to use (e.g., 'gemma2:latest').
+        model_name: The name of the Ollama model to use (e.g., 'llama3.1:8b').
         system_prompt: The system instruction that defines the agent's behavior.
         messages: List of message dictionaries maintaining conversation history.
     
     Example:
-        >>> agent = Agent("gemma2:latest", system_prompt="You are a helpful assistant.")
+        >>> agent = Agent("llama3.1:8b", system_prompt="You are a helpful assistant.")
         >>> response = agent.chat("Hello!")
         >>> print(response)
     """
@@ -62,7 +62,7 @@ class Agent:
             Exception: Propagates any errors from the Ollama API call.
         
         Example:
-            >>> agent = Agent("gemma2:latest")
+            >>> agent = Agent("llama3.1:8b")
             >>> response = agent.chat("What is Python?")
             >>> print(f"Response content: {response.content}")
         """
@@ -113,7 +113,7 @@ class Agent:
         conversation without creating a new Agent instance.
         
         Example:
-            >>> agent = Agent("gemma2:latest")
+            >>> agent = Agent("llama3.1:8b")
             >>> agent.chat("First question")
             >>> agent.reset()  # Clears history but keeps system prompt
             >>> agent.chat("New conversation starts here")
@@ -130,7 +130,7 @@ class Agent:
             history including system prompts, user messages, and assistant responses.
         
         Example:
-            >>> agent = Agent("gemma2:latest")
+            >>> agent = Agent("llama3.1:8b")
             >>> agent.chat("Hello")
             >>> history = agent.get_history()
             >>> print(f"Message count: {len(history)}")
@@ -168,7 +168,7 @@ class Agent:
 
 if __name__ == "__main__":
     agent = Agent(
-        "gemma2:latest",
+        "llama3.1:8b",
         system_prompt="You are a helpful assistant. Respond concisely and clearly."
     )
     

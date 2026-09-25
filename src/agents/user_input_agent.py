@@ -74,7 +74,7 @@ class UserInputAgent(SimpleAgent):
         return subrequests
 
 if __name__ == "__main__":
-    agent = UserInputAgent("gemma2:latest")
+    agent = UserInputAgent("llama3.1:8b")
     
     print("UserInputAgent initialized. Enter queries to decompose.\n")
     print("Type 'quit' or 'exit' to end.\n")
