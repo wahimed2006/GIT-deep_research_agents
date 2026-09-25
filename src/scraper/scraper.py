@@ -4,24 +4,54 @@ This module provides the main scraping interface that orchestrates
 fetching, cleaning, and formatting web content for LLM consumption.
 """
 
-from typing import Dict, Any, Optional
-from .fetcher import fetch_content, FetchError
+from typing import Dict, Any, Optional, List
+from .fetcher import fetch_content, FetchError, DEFAULT_HTTPX_TIMEOUT, DEFAULT_PLAYWRIGHT_TIMEOUT
 from .cleaner import clean_html, extract_content_structure
-from .formatter import format_for_llm
+from .formatter import format_for_llm, MAX_OUTPUT_LENGTH
 
+
+# =============================================================================
+# CONFIGURATION CONSTANTS
+# =============================================================================
+
+# Timeouts (imported from fetcher, with local overrides if needed)
+DEFAULT_TIMEOUT_HTTPX: int = DEFAULT_HTTPX_TIMEOUT
+DEFAULT_TIMEOUT_PLAYWRIGHT: int = DEFAULT_PLAYWRIGHT_TIMEOUT
+
+# Output settings
+DEFAULT_FORMAT_MARKDOWN: bool = True
+DEFAULT_MAX_OUTPUT_LENGTH: int = MAX_OUTPUT_LENGTH
+
+# Concurrent scraping
+DEFAULT_MAX_CONCURRENT: int = 3
+
+# Test URLs (for __main__ block)
+TEST_URLS: List[str] = [
+    "https://www.wikipedia.org",
+    "https://coinmarketcap.com",
+]
+
+
+# =============================================================================
+# EXCEPTIONS
+# =============================================================================
 
 class ScraperError(Exception):
     """Raised when scraping fails."""
     pass
 
 
+# =============================================================================
+# FUNCTIONS
+# =============================================================================
+
 def scrape(
     url: str,
-    timeout_httpx: int = 10,
-    timeout_playwright: int = 30,
+    timeout_httpx: int = DEFAULT_TIMEOUT_HTTPX,
+    timeout_playwright: int = DEFAULT_TIMEOUT_PLAYWRIGHT,
     force_playwright: bool = False,
-    format_markdown: bool = True,
-    max_output_length: int = 10000
+    format_markdown: bool = DEFAULT_FORMAT_MARKDOWN,
+    max_output_length: int = DEFAULT_MAX_OUTPUT_LENGTH
 ) -> Dict[str, Any]:
     """Scrape a URL and return structured content.
     
@@ -85,7 +115,7 @@ def scrape(
         structured = extract_content_structure(cleaned_html)
         
         # Step 4: Format as Markdown (optional)
-        markdown = None
+        markdown: Optional[str] = None
         if format_markdown:
             markdown = format_for_llm(
                 structured_content=structured,
@@ -115,11 +145,11 @@ def scrape(
 
 
 def scrape_multiple(
-    urls: list[str],
-    timeout_httpx: int = 10,
-    timeout_playwright: int = 30,
-    max_concurrent: int = 3
-) -> list[Dict[str, Any]]:
+    urls: List[str],
+    timeout_httpx: int = DEFAULT_TIMEOUT_HTTPX,
+    timeout_playwright: int = DEFAULT_TIMEOUT_PLAYWRIGHT,
+    max_concurrent: int = DEFAULT_MAX_CONCURRENT
+) -> List[Dict[str, Any]]:
     """Scrape multiple URLs sequentially.
     
     Args:
@@ -140,7 +170,7 @@ def scrape_multiple(
         ...     else:
         ...         print(f"✗ {result['url']}: {result['error']}")
     """
-    results = []
+    results: List[Dict[str, Any]] = []
     
     for url in urls:
         result = scrape(
@@ -153,16 +183,14 @@ def scrape_multiple(
     return results
 
 
+# =============================================================================
+# MAIN (TESTING)
+# =============================================================================
+
 if __name__ == "__main__":
-    # Test scraping
-    test_urls = [
-        "https://www.wikipedia.org",
-        "https://coinmarketcap.com",
-    ]
-    
     print("Testing scraper...\n")
     
-    for url in test_urls:
+    for url in TEST_URLS:
         print(f"Scraping: {url}")
         result = scrape(url)
         
