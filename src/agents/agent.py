@@ -4,8 +4,9 @@ This module provides an Agent class that maintains conversation history
 and interacts with local LLM models through the Ollama API.
 """
 
-from typing import Dict, Any
+from typing import Dict, Any, List, Optional
 import ollama
+from tools import AgentResponse
 
 
 class Agent:
@@ -42,7 +43,7 @@ class Agent:
             {"role": "system", "content": self.system_prompt}
         ]
     
-    def chat(self, query: str, stream: bool = True) -> str:
+    def chat(self, query: str, stream: bool = True) -> AgentResponse[None]:
         """Send a user message and get the assistant's response.
         
         This method appends the user query to the conversation history,
@@ -55,7 +56,7 @@ class Agent:
                    Defaults to True for real-time output.
         
         Returns:
-            The complete assistant response as a string.
+            An AgentResponse object containing the assistant's response.
         
         Raises:
             Exception: Propagates any errors from the Ollama API call.
@@ -63,7 +64,7 @@ class Agent:
         Example:
             >>> agent = Agent("gemma2:latest")
             >>> response = agent.chat("What is Python?")
-            >>> print(f"Response length: {len(response)}")
+            >>> print(f"Response content: {response.content}")
         """
         # Append user message to conversation history
         self.messages.append({"role": "user", "content": query})
@@ -91,14 +92,18 @@ class Agent:
                 print(content, end="", flush=True)
             print()  # Newline after streaming completes
         else:
-            full_response = response.get("message", {}).get("content", "")  # type: ignore
+            message: Dict[str, Any] = response.get("message", {}) if isinstance(response, dict) else {}  # type: ignore
+            full_response = message.get("content", "")
             print("Agent: ")
             print(full_response)
         
         # Append assistant response to conversation history
         self.messages.append({"role": "assistant", "content": full_response})
         
-        return full_response
+        return self._build_response(
+            content=full_response,
+            raw_response=response
+        )
     
     def reset(self) -> None:
         """Clear the conversation history and reset to initial state.
@@ -122,7 +127,7 @@ class Agent:
         
         Returns:
             A list of message dictionaries containing the full conversation
-            history including system prompt, user messages, and assistant responses.
+            history including system prompts, user messages, and assistant responses.
         
         Example:
             >>> agent = Agent("gemma2:latest")
@@ -131,6 +136,34 @@ class Agent:
             >>> print(f"Message count: {len(history)}")
         """
         return self.messages.copy()
+    
+    def _build_response(
+        self,
+        content: str,
+        raw_response: Any,
+        tool_calls: Optional[List[Dict[str, Any]]] = None,
+        tool_results: Optional[List[Dict[str, Any]]] = None,
+        metadata: Optional[Dict[str, Any]] = None
+    ) -> AgentResponse[None]:
+        """Build a standardized AgentResponse from raw LLM output.
+        
+        Args:
+            content: The main text content of the response.
+            raw_response: The raw response object from the LLM provider.
+            tool_calls: Optional list of tool calls requested by the model.
+            tool_results: Optional list of tool execution results.
+            metadata: Optional additional metadata (usage, model info, etc.).
+        
+        Returns:
+            An AgentResponse object with the provided data.
+        """
+        return AgentResponse(
+            content=content,
+            tool_calls=tool_calls or [],
+            tool_results=tool_results or [],
+            metadata=metadata or {},
+            raw_response=raw_response
+        )
 
 
 if __name__ == "__main__":
@@ -153,6 +186,8 @@ if __name__ == "__main__":
             break
         
         try:
-            agent.chat(query)
+            response = agent.chat(query)
+            # Access response content via the AgentResponse object
+            # print(f"Response: {response.content}")
         except Exception as e:
             print(f"\nError calling Ollama API: {e}")

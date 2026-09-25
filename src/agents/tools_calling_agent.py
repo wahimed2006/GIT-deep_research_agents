@@ -7,7 +7,8 @@ with tool calling capabilities, including validation of model support.
 from typing import Any, Dict, List, Optional, Iterator
 import requests
 from agent import Agent
-
+from tools import AgentResponse
+from typing import override
 
 class ToolCallingAgent(Agent):
     """An agent with tool calling capabilities.
@@ -152,7 +153,8 @@ class ToolCallingAgent(Agent):
             "glm-5.2:9b",
         ]
     
-    def chat(self, query: str, tools: Optional[List[Dict[str, Any]]] = None) -> str:
+    @override
+    def chat(self, query: str, stream=False) -> AgentResponse:
         """Send a user message and get the assistant's response with tool calling.
         
         This method extends the base chat method to support tool calling.
