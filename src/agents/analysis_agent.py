@@ -113,7 +113,6 @@ class AnalysisWebSearchAgent(SimpleAgent):
         
         # Sort by relevance score descending
         scored_results.sort(key=lambda x: x['relevance_score'], reverse=True)
-        print(scored_results)
         return scored_results       
 
     def score_relevance(self,  

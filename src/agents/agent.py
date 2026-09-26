@@ -39,7 +39,7 @@ class Agent:
         """
         self.model_name = model_name
         self.system_prompt = system_prompt
-        self.messages: list[Dict[str, str]] = [
+        self.messages: list[Dict[str, Any]] = [
             {"role": "system", "content": self.system_prompt}
         ]
         self.options = None

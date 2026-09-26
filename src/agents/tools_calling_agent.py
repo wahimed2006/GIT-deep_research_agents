@@ -194,26 +194,40 @@ class ToolCallingAgent(Agent):
         self.messages.append({"role": "user", "content": query})
         
         try:
-            response = ollama.chat(
-                model=self.model_name,
-                messages=self.messages,
-                tools=self.tools,
-                stream=False
-            )
+            return self._chat_once()
         except Exception as e:
             # Remove the user message if the API call fails
             self.messages.pop()
             raise e
-        
-        # Extract message and tool calls from response
-        message: Dict[str, Any] = response.get("message", {}) if isinstance(response, dict) else {}
-        content: str = message.get("content", "")
-        tool_calls: List[Dict[str, Any]] = message.get("tool_calls", [])
-        
-        # Append assistant message to history
-        self.messages.append({"role": "assistant", "content": content})
-        
-        # Build and return standardized response
+
+    def _chat_once(self) -> AgentResponse[None]:
+        """Request one assistant turn without adding another user message."""
+        response = ollama.chat(
+            model=self.model_name,
+            messages=self.messages,
+            tools=self.tools,
+            stream=False
+        )
+
+        if isinstance(response, dict):
+            message: Dict[str, Any] = response.get("message", {})
+        else:
+            message_object = getattr(response, "message", None)
+            message = {
+                "content": getattr(message_object, "content", "") or "",
+                "tool_calls": getattr(message_object, "tool_calls", []) or [],
+            }
+
+        content = str(message.get("content", "") or "")
+        tool_calls = message.get("tool_calls", []) or []
+        assistant_message: Dict[str, Any] = {
+            "role": "assistant",
+            "content": content,
+        }
+        if tool_calls:
+            assistant_message["tool_calls"] = tool_calls
+        self.messages.append(assistant_message)
+
         return self._build_response(
             content=content,
             raw_response=response,

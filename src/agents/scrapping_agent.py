@@ -23,6 +23,7 @@ from ..tools import (
     PageNotLoadedError,
 )
 from ..tools import AgentResponse
+from ..prompt.scrapping_agent_prompt import SCRAPPING_AGENT_PROMPT
 from .tools_calling_agent import ToolCallingAgent
 
 
@@ -52,7 +53,7 @@ class ScrappingAgent(ToolCallingAgent):
             system_prompt: Optional system prompt.
         """
         agent_tools = tools if tools is not None else SCRAPPING_AGENT_TOOLS
-        full_prompt = system_prompt
+        full_prompt = system_prompt or SCRAPPING_AGENT_PROMPT
 
         super().__init__(model_name, agent_tools, full_prompt)
 
@@ -145,8 +146,44 @@ class ScrappingAgent(ToolCallingAgent):
                 metadata={"error": True, "reason": "no_content"},
             )
 
-        # Use parent ToolCallingAgent.chat() - it will auto-use tools
-        return super().chat(query, stream=stream)
+        enriched_query = (
+            f"{query}\n\nCURRENT PAGE CONTENT:\n{self.context.markdown}"
+        )
+        response = super().chat(enriched_query, stream=stream)
+        all_tool_calls = list(response.tool_calls)
+        all_tool_results: List[Dict[str, Any]] = []
+
+        for _ in range(5):
+            if not response.tool_calls:
+                break
+
+            for tool_call in response.tool_calls:
+                function = getattr(tool_call, "function", tool_call)
+                if isinstance(function, dict):
+                    tool_name = function.get("name", "")
+                    arguments = function.get("arguments", {})
+                else:
+                    tool_name = getattr(function, "name", "")
+                    arguments = getattr(function, "arguments", {})
+
+                if not isinstance(arguments, dict):
+                    arguments = {}
+                tool_result = self.execute_tool(tool_name, arguments)
+                all_tool_results.append({
+                    "tool": tool_name,
+                    "result": tool_result.content,
+                })
+                self.messages.append({
+                    "role": "tool",
+                    "content": tool_result.content,
+                })
+
+            response = self._chat_once()
+            all_tool_calls.extend(response.tool_calls)
+
+        response.tool_calls = all_tool_calls
+        response.tool_results = all_tool_results
+        return response
 
     def chat_with_sources(
         self,
