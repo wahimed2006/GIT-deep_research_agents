@@ -145,22 +145,25 @@ class AnalysisWebSearchAgent(SimpleAgent):
             f"[Result {i+1}]\n"
             f"Title: {r.get('title', '')}\n"
             f"URL: {r.get('href', r.get('link', ''))}\n"
-            f"Snippet: {r.get('body', '')[:500]}"  # Limit snippet length
+            f"Snippet: {r.get('body', '')[:500]}"
             for i, r in enumerate(limited_results)
         ])
         
         context = f"""
-User Query: {query}
+    You are a search relevance scorer. Score each result from 0 to 100.
 
-Rate the relevance of each search result from 0 to 100.
-Return ONLY a JSON array of scores in the same order as the results.
+    User Query: "{query}"
 
-Example format: [85, 42, 91, 15, 67]
+    Instructions:
+    - Score ONLY based on relevance to the query
+    - Return ONLY a JSON array of integers
+    - Do NOT include explanations or evaluation blocks
+    - Example output: [85, 42, 15, 91, 67]
 
-Search Results to Score:
-{results_text}
+    Search Results:
+    {results_text}
 
-Scores: """
+    Return ONLY the JSON array of scores: """
 
         response = self.chat(context, stream=False)
         self.reset()
@@ -168,7 +171,6 @@ Scores: """
         # Parse scores from response
         scores = self.parse_scores_batch(response.content, expected_count=len(limited_results))
         return scores
-    
     def score_relevance(
         self,
         query: str,
