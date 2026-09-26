@@ -13,7 +13,7 @@ from urllib.parse import urljoin, urlparse
 from bs4 import BeautifulSoup
 
 from .page_context import PageContext
-from src.scraper.scraper import scrape
+from ..scraper.scraper import scrape
 
 
 DEFAULT_TABLE_ROW_LIMIT: int = 10

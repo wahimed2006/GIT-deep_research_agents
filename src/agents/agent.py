@@ -6,7 +6,7 @@ and interacts with local LLM models through the Ollama API.
 
 from typing import Dict, Any, List, Optional
 import ollama
-from tools import AgentResponse
+from ..tools import AgentResponse
 
 
 class Agent:
@@ -43,17 +43,6 @@ class Agent:
             {"role": "system", "content": self.system_prompt}
         ]
         self.options = None
-        self._initialize()
-        
-    def  _initialize(self):
-        print("===INITITILIZING===")
-        response = ollama.chat(
-            model=self.model_name,
-            messages=self.messages,
-            stream=False,
-            keep_alive="1h",
-            options=self.options
-        )
     
     def chat(self, query: str, stream: bool = True) -> AgentResponse[None]:
         """Send a user message and get the assistant's response.
