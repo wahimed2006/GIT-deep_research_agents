@@ -1,6 +1,7 @@
 """ScrappingAgent implementation.
 
-This agent can scrape web pages and explore their content using specialized tools.
+This agent uses tool calling to intelligently navigate and extract
+information from scraped Markdown content.
 """
 
 from __future__ import annotations
@@ -8,6 +9,7 @@ from __future__ import annotations
 import sys
 from pathlib import Path
 from typing import Any, Dict, List, Optional, override
+from datetime import datetime
 
 # Add parent directory to path if running as script
 if __package__ is None or __package__ == "":
@@ -25,16 +27,15 @@ from .tools_calling_agent import ToolCallingAgent
 
 
 class ScrappingAgent(ToolCallingAgent):
-    """Agent capable of scraping and exploring web pages.
+    """Agent that uses tools to navigate and extract from scraped MD content.
 
-    This agent maintains a PageContext that is updated whenever a page
-    is scraped. All exploration tools (search, filter, extract) operate
-    on this context.
+    Workflow:
+    1. Orchestrator provides: query, question, and MD content
+    2. Agent uses tools to search/filter/extract from MD
+    3. If needed, agent scrapes linked pages recursively
+    4. Returns final extracted information
 
-    Attributes:
-        model_name: Name of the LLM model to use.
-        system_prompt: Optional system prompt for the agent.
-        context: Shared page state for all tool calls.
+    Tools enable efficient navigation without reading entire MD.
     """
 
     def __init__(
@@ -46,42 +47,23 @@ class ScrappingAgent(ToolCallingAgent):
         """Initialize the ScrappingAgent.
 
         Args:
-            model_name: Name of the LLM model (e.g., 'qwen3.8', 'llama3.1').
-            tools: Optional custom tool schemas. Defaults to SCRAPPING_AGENT_TOOLS.
-            system_prompt: Optional system prompt to guide agent behavior.
+            model_name: Name of the LLM model.
+            tools: Optional custom tool schemas.
+            system_prompt: Optional system prompt.
         """
-        # Use default tools if none provided
         agent_tools = tools if tools is not None else SCRAPPING_AGENT_TOOLS
+        full_prompt = system_prompt
 
-        # Build default system prompt if none provided
-        default_prompt = (
-            "You are a web scraping assistant that can fetch and explore web pages. "
-            "You have access to tools for scraping pages, searching within content, "
-            "filtering tables and links, extracting code blocks, and summarizing pages. "
-            "Always start by scraping the target URL before using exploration tools."
-        )
-        full_prompt = system_prompt if system_prompt else default_prompt
-
-        # Initialize parent ToolCallingAgent
         super().__init__(model_name, agent_tools, full_prompt)
 
-        # Create shared page context and tool registry
         self.context = PageContext()
         self.tool_registry = build_tool_registry(self.context)
 
     def execute_tool(self, tool_name: str, arguments: Dict[str, Any]) -> AgentResponse[str]:
-        """Execute a tool by name with the given arguments.
-
-        Args:
-            tool_name: Name of the tool to execute.
-            arguments: Dictionary of arguments for the tool.
-
-        Returns:
-            AgentResponse with the tool result or error message.
-        """
+        """Execute a tool by name with the given arguments."""
         if tool_name not in self.tool_registry:
             return AgentResponse[str](
-                content=f"Unknown tool: {tool_name}. Available tools: {list(self.tool_registry.keys())}",
+                content=f"Unknown tool: {tool_name}. Available: {list(self.tool_registry.keys())}",
                 tool_calls=[],
                 tool_results=[],
                 metadata={"error": True, "tool_name": tool_name},
@@ -98,7 +80,7 @@ class ScrappingAgent(ToolCallingAgent):
             )
         except PageNotLoadedError:
             return AgentResponse[str](
-                content="No page is loaded. Call scrape_page first with a URL.",
+                content="No page loaded. Provide MD content first.",
                 tool_calls=[],
                 tool_results=[],
                 metadata={"error": True, "tool_name": tool_name, "reason": "page_not_loaded"},
@@ -111,17 +93,98 @@ class ScrappingAgent(ToolCallingAgent):
                 metadata={"error": True, "tool_name": tool_name},
                 raw_response=error,
             )
+
     @override
     def reset(self) -> None:
         """Reset the agent's page context and conversation history."""
         self.context.clear()
+        self.messages = [
+            {"role": "system", "content": self.system_prompt}
+        ]
 
-    def get_current_page_info(self) -> Dict[str, Any]:
-        """Get information about the currently loaded page.
+    def load_markdown(
+        self,
+        markdown: str,
+        url: str = "",
+        structured: Optional[Dict[str, Any]] = None,
+    ) -> None:
+        """Load Markdown content into the agent's context.
+
+        Args:
+            markdown: The scraped Markdown content.
+            url: Optional source URL.
+            structured: Optional structured data from scraper.
+        """
+        self.context.markdown = markdown
+        self.context.url = url
+        self.context.structured = structured or {}
+        self.context.fetch_method = "preloaded"
+
+    def chat(
+        self,
+        query: str,
+        stream: bool = False,
+    ) -> AgentResponse:
+        """Chat with the agent to extract information from loaded MD.
+
+        The agent will use tools (search, filter, get_section, etc.) to
+        intelligently navigate the content and find relevant information.
+
+        Args:
+            query: The information to extract (e.g., "Bitcoin price").
+            stream: Whether to stream the response.
 
         Returns:
-            Dictionary with page metadata.
+            AgentResponse with extracted information.
         """
+        if not self.context.markdown:
+            return AgentResponse[str](
+                content="No Markdown content loaded. Call load_markdown() first.",
+                tool_calls=[],
+                tool_results=[],
+                metadata={"error": True, "reason": "no_content"},
+            )
+
+        # Use parent ToolCallingAgent.chat() - it will auto-use tools
+        return super().chat(query, stream=stream)
+
+    def chat_with_sources(
+        self,
+        query: str,
+        max_depth: int = 2,
+    ) -> AgentResponse[Dict[str, Any]]:
+        """Chat and recursively explore links if needed.
+
+        Args:
+            query: The information to extract.
+            max_depth: Maximum recursion depth for link exploration.
+
+        Returns:
+            AgentResponse with extracted info and sources.
+        """
+        # Step 1: Extract from current page
+        result = self.chat(query)
+
+        # Step 2: Check if more info needed (agent decides via tools)
+        # This is handled by the LLM through tool calls
+
+        return AgentResponse[Dict[str, Any]](
+            content=result.content,
+            structured_data={
+                "query": query,
+                "url": self.context.url,
+                "extracted": result.content,
+                "tool_calls": result.tool_calls,
+                "tool_results": result.tool_results,
+            },
+            metadata={
+                "success": not result.metadata.get("error"),
+                "timestamp": datetime.now().isoformat(),
+            },
+        )
+
+    def get_current_page_info(self) -> Dict[str, Any]:
+        """Get information about the currently loaded page."""
         if not self.context.is_loaded:
             return {"loaded": False}
 
@@ -130,69 +193,8 @@ class ScrappingAgent(ToolCallingAgent):
             "loaded": True,
             "url": self.context.url,
             "title": metadata.get("title", "Unknown"),
-            "fetch_method": self.context.fetch_method,
-            "text_length": len(self.context.structured.get("body_text", "")),
+            "text_length": len(self.context.markdown),
             "headings_count": len(self.context.structured.get("headings", [])),
             "tables_count": len(self.context.structured.get("tables", [])),
             "links_count": len(self.context.structured.get("links", [])),
         }
-
-    def scrape_and_extract(
-        self,
-        url: str,
-        extraction_query: str,
-        force_playwright: bool = False,
-    ) -> AgentResponse[str]:
-        """Scrape a page and extract information matching a query.
-
-        This is a convenience method that combines scraping and extraction
-        in a single call.
-
-        Args:
-            url: URL of the page to scrape.
-            extraction_query: What information to extract (e.g., "Bitcoin price").
-            force_playwright: Whether to force JavaScript rendering.
-
-        Returns:
-            AgentResponse with the extracted information.
-        """
-        # Step 1: Scrape the page
-        scrape_result = self.execute_tool("scrape_page", {
-            "url": url,
-            "force_playwright": force_playwright,
-        })
-
-        if scrape_result.metadata.get("error"):
-            return scrape_result
-
-        # Step 2: Search within page for the query
-        search_result = self.execute_tool("search_within_page", {
-            "pattern": extraction_query,
-        })
-
-        if search_result.metadata.get("error"):
-            # Fallback: return summary
-            return self.execute_tool("get_summary", {"max_length": 150})
-
-        return search_result
-
-
-# =============================================================================
-# EXAMPLE USAGE
-# =============================================================================
-
-if __name__ == "__main__":
-    # Example: Scrape and extract information
-    agent = ScrappingAgent(model_name="llama3.1:8b")
-
-    # Scrape CoinMarketCap
-    response = agent.scrape_and_extract(
-        url="https://coinmarketcap.com",
-        extraction_query="CoinMarketCap",
-        force_playwright=True,
-    )
-
-    print("=== ScrappingAgent Result ===")
-    print(response.content[:1000])
-    print("\n=== Page Info ===")
-    print(agent.get_current_page_info())
