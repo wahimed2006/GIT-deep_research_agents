@@ -14,20 +14,13 @@ from .analysis_agent import AnalysisWebSearchAgent
 from .no_tools_calling_agent import SimpleAgent
 from ..tools.web_search import search_web
 from .scrapping_agent import ScrappingAgent
+from .synthesis_agent import SynthesisAgent
 
 
 user = UserInputAgent("llama3.1:8b")
 analysis_agent = AnalysisWebSearchAgent("llama3.2:3b")
 scrapping_agent = ScrappingAgent("llama3.2:3b")
-synthesis_agent = SimpleAgent(
-    "llama3.2:3b",
-    system_prompt=(
-        "You are a research synthesis agent. Answer the user's original question "
-        "using only the extracted source information provided. Reconcile conflicts, "
-        "avoid unsupported claims, and cite the relevant source URLs  if  you judge it will help the user to more understand the answer."
-    )
-)
-
+synthesis_agent = SynthesisAgent("llama3.2:3b")
 
 def process_source(
     result: Dict[str, Any],
@@ -191,9 +184,12 @@ while True:
                 "Cite sources where relevant."
             )
             
-            synthesis = synthesis_agent.chat(synthesis_prompt, stream=False)
+            final_answer = synthesis_agent.synthesize(
+                query=query,
+                extracted_sources=final_responses,
+                stream=False,
+            )
             synthesis_agent.reset()
-            final_answer = synthesis.content
             analysis_agent.save_final_respose(final_response=final_answer)
         else:
             final_answer = "No usable source could be scraped for this question."
