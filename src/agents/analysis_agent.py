@@ -73,7 +73,7 @@ class AnalysisWebSearchAgent(SimpleAgent):
         scored_results = []
         
         for search in web_search_result:
-            link = search.get('link', '')
+            link = search.get('href', '')
             title = search.get('title', '')
             body = search.get('body', '')
             
