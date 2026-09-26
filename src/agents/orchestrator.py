@@ -198,18 +198,7 @@ Extract information that answers the query."""
         min_score: int = 75,
         parallel_workers: int = 3,
     ) -> ResearchResult:
-        """Execute full research workflow for a query.
-        
-        Args:
-            query: User's research question.
-            max_search_results: Max search results per sub-question.
-            max_sources: Max sources to scrape and synthesize.
-            min_score: Minimum relevance score to consider a source.
-            parallel_workers: Number of parallel scraping workers.
-        
-        Returns:
-            ResearchResult with final answer and metadata.
-        """
+        """Execute full research workflow for a query."""
         import time
         start_time = time.time()
         
@@ -219,22 +208,43 @@ Extract information that answers the query."""
         self.user_agent.reset()
         content = self.user_agent.parse_subrequests(questions.content)
         
-        # Step 2: Collect search results
+        # Step 2: Collect search results with error handling
         all_search_results: List[Dict[str, Any]] = []
         
         for index, question in enumerate(content, 1):
             print(f"\n=== Sub-request {index}: {question} ===\n")
-            web_search = search_web(query=question, max_results=max_search_results)
-            print(f"Found {len(web_search)} results\n")
             
-            for item in web_search:
-                item_with_question = {**item, 'question': question}
-                all_search_results.append(item_with_question)
+            try:
+                web_search = search_web(query=question, max_results=max_search_results)
+                print(f"Found {len(web_search)} results\n")
+                
+                for item in web_search:
+                    item_with_question = {**item, 'question': question}
+                    all_search_results.append(item_with_question)
+            
+            except Exception as e:
+                print(f"  ✗ Search failed for '{question}': {e}")
+                # Continue with other sub-questions
+        
+        # Handle no results
+        if not all_search_results:
+            elapsed_time = time.time() - start_time
+            return ResearchResult(
+                answer=f"Aucun résultat trouvé pour : {query}",
+                query=query,
+                sources=[],
+                sources_count=0,
+                metadata={
+                    "elapsed_time": elapsed_time,
+                    "error": "No search results found",
+                    "sub_questions": len(content),
+                },
+            )
         
         # Step 3: Score all results in batch
         print(f"\n[Analyse] Scoring en batch de {len(all_search_results)} résultats...")
         
-        if all_search_results:
+        try:
             analysed = self.analysis_agent.web_search_score(
                 query=query,
                 web_search_result=all_search_results,
@@ -245,8 +255,10 @@ Extract information that answers the query."""
                     f"  ✓ [{result['relevance_score']}/100] "
                     f"{result.get('title', 'N/A')[:50]}"
                 )
-        else:
-            analysed = []
+        except Exception as e:
+            print(f"  ✗ Scoring failed: {e}")
+            # Fallback: use all results with score 50
+            analysed = [{**r, 'relevance_score': 50} for r in all_search_results]
         
         # Step 4: Filter top sources
         if analysed:
@@ -306,7 +318,6 @@ Extract information that answers the query."""
         )
         
         return result
-    
     def research_and_print(
         self,
         query: str,
