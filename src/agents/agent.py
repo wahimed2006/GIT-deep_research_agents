@@ -42,6 +42,16 @@ class Agent:
         self.messages: list[Dict[str, str]] = [
             {"role": "system", "content": self.system_prompt}
         ]
+        self._initialize()
+        
+    def  _initialize(self):
+        print("===INITITILIZING===")
+        response = ollama.chat(
+            model=self.model_name,
+            messages=self.messages,
+            stream=False,
+            keep_alive="1h"
+        )
     
     def chat(self, query: str, stream: bool = True) -> AgentResponse[None]:
         """Send a user message and get the assistant's response.

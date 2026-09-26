@@ -140,6 +140,7 @@ class AnalysisWebSearchAgent(SimpleAgent):
         """
         
         response = self.chat(context, stream=False)
+        self.reset()
         return self.parse_score(response.content)
         
     def parse_score(self, text: str) -> int:

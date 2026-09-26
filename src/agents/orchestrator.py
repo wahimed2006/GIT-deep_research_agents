@@ -15,10 +15,6 @@ from ..tools.web_search import search_web
 user = UserInputAgent("llama3.1:8b")
 analyse = AnalysisWebSearchAgent("llama3.1:8b")
 
-# Test rapide
-response = analyse.chat("Score this: 42", stream=True)
-print(f"Test response: '{response.content}'")
-
 while True:
     try:
         query = input("Vous : ")
@@ -42,9 +38,11 @@ while True:
         # Search web
         web_search = search_web(query=question, max_results=5)
         print(f"Found {len(web_search)} results\n")
+        an = analyse.web_search_score(query=question, web_search_result=web_search)
+        print(an)
         
         # Score each result
-        for j, result in enumerate(web_search, 1):
+        """for j, result in enumerate(web_search, 1):
             try:
                 score = analyse.score_relevance(
                     query=question,
@@ -60,5 +58,6 @@ while True:
             
             except Exception as e:
                 print(f"  [{j}] Error: {e}")
+        """
         
         i += 1
