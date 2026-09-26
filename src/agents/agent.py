@@ -44,6 +44,12 @@ class Agent:
         ]
         self.options = None
     
+    def save_final_respose(self, final_response:str):
+        self.messages.append({
+            "role": "assistant",
+            "content": final_response
+        })
+    
     def chat(self, query: str, stream: bool = True) -> AgentResponse[None]:
         """Send a user message and get the assistant's response.
         

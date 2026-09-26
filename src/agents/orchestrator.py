@@ -15,7 +15,7 @@ from ..tools.web_search import search_web
 from .scrapping_agent import ScrappingAgent
 
 
-user = UserInputAgent("llama3.2:3b")
+user = UserInputAgent("llama3.1:8b")
 analysis_agent = AnalysisWebSearchAgent("llama3.2:3b")
 scrapping_agent = ScrappingAgent("llama3.2:3b")
 synthesis_agent = SimpleAgent(
@@ -155,7 +155,9 @@ Extract information that answers the query."""
             synthesis = synthesis_agent.chat(synthesis_prompt, stream=False)
             synthesis_agent.reset()
             final_answer = synthesis.content
+            analysis_agent.save_final_respose(final_response=final_answer)
         else:
             final_answer = "No usable source could be scraped for this question."
+            analysis_agent.save_final_respose(final_response=final_answer)
         
         print("="*50)
