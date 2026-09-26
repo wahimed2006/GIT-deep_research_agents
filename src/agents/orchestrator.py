@@ -120,7 +120,7 @@ class ResearchOrchestrator:
         result: Dict[str, Any],
         query: str,
     ) -> Dict[str, Any] | None:
-        """Scrape and extract info from one source.
+        """Scrape and extract info from one source with thread isolation.
         
         Args:
             result: Scored search result.
@@ -132,12 +132,11 @@ class ResearchOrchestrator:
         link = result.get('link', '')
         body = result.get('body', '')
         
-        # Skip scraping if snippet is rich enough
         if len(body) > 250 and any(
             kw in body.lower() for kw in 
             ['album', 'sortie', 'released', '2026', '2025', '2024', 'price', 'market cap']
         ):
-            print(f"  ✓ Snippet riche, skip scraping: {result.get('title', '')[:50]}")
+            print(f"  [OK] Snippet riche, skip scraping: {result.get('title', '')[:50]}")
             return {
                 'query': query,
                 'source_url': link,
@@ -148,16 +147,18 @@ class ResearchOrchestrator:
                 'tool_results': [],
             }
         
-        # Scrape with fallback
         print(f"  [Scraping] {link}...")
         scrape_result = scrape(link, force_playwright=False)
         
         if not scrape_result['success'] or len(scrape_result.get('markdown', '')) < 500:
-            print(f"  ⚠️  httpx failed/low content, retrying with Playwright...")
+            print(f"  [!] Contenu insuffisant/échec httpx, bascule Playwright...")
             scrape_result = scrape(link, force_playwright=True)
         
         if scrape_result['success']:
-            self.scrapping_agent.load_markdown(
+            # Instance dédiée par thread pour garantir l'isolation mémoire
+            thread_scrapping_agent = ScrappingAgent(self.models["scrapping"])
+            
+            thread_scrapping_agent.load_markdown(
                 markdown=scrape_result["markdown"],
                 url=link,
                 structured=scrape_result.get("structured"),
@@ -173,8 +174,7 @@ Context:
 
 Extract information that answers the query."""
             
-            response = self.scrapping_agent.chat(query=user_query, stream=False)
-            self.scrapping_agent.reset()
+            response = thread_scrapping_agent.chat(query=user_query, stream=False)
             
             return {
                 'query': query,
@@ -186,7 +186,7 @@ Extract information that answers the query."""
                 'tool_results': response.tool_results,
             }
         else:
-            print(f"  ✗ Scraping failed: {scrape_result.get('error', 'unknown error')}")
+            print(f"  [FAIL] Scraping failed: {scrape_result.get('error', 'unknown error')}")
             return None
     
     def research(
