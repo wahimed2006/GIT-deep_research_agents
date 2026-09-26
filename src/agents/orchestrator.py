@@ -8,7 +8,6 @@ from __future__ import annotations
 
 import sys
 from pathlib import Path
-import math
 from typing import Dict, List, Any
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from dataclasses import dataclass, field
@@ -318,6 +317,7 @@ Extract information that answers the query."""
         )
         
         return result
+    
     def research_and_print(
         self,
         query: str,

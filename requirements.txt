@@ -3,3 +3,7 @@ requests
 duckduckgo-search
 ddgs
 lxml
+sounddevice
+faster-whisper
+numpy
+scipy
