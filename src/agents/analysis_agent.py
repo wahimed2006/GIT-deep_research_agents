@@ -54,8 +54,8 @@ class AnalysisWebSearchAgent(SimpleAgent):
                               'link', and 'body' keys.
         
         Returns:
-            List of search results with an added 'relevance_score' key,
-            sorted by score in descending order.
+            List of dictionaries with keys: 'query', 'title', 'link', 'body', 'relevance_score'.
+            Sorted by score in descending order.
         
         Raises:
             ScoreParseError: If any result's score cannot be parsed.
@@ -85,8 +85,14 @@ class AnalysisWebSearchAgent(SimpleAgent):
                     body=body
                 )
                 
-                # Add score to result
-                result_with_score = {**search, 'relevance_score': score}
+                # Build result dict with all required fields
+                result_with_score = {
+                    'query': query,
+                    'title': title,
+                    'link': link,
+                    'body': body,
+                    'relevance_score': score,
+                }
                 scored_results.append(result_with_score)
             
             except ScoreParseError as e:
@@ -96,16 +102,19 @@ class AnalysisWebSearchAgent(SimpleAgent):
             except Exception as e:
                 # Add with error flag but continue processing
                 result_with_score = {
-                    **search,
-                    'relevance_score': 50,
+                    'query': query,
+                    'title': title,
+                    'link': link,
+                    'body': body,
+                    'relevance_score': 0,
                     'score_error': str(e)
                 }
                 scored_results.append(result_with_score)
         
         # Sort by relevance score descending
         scored_results.sort(key=lambda x: x['relevance_score'], reverse=True)
-        return scored_results
-            
+        print(scored_results)
+        return scored_results       
 
     def score_relevance(self,  
         query: str,

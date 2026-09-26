@@ -1,6 +1,8 @@
 import sys
 from pathlib import Path
 import math
+from typing import Dict, List, Any
+from tools import *
 
 if __package__ is None or __package__ == "":
     sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
@@ -10,10 +12,11 @@ from ..scraper import *
 from .user_input_agent import UserInputAgent
 from .analysis_agent import AnalysisWebSearchAgent, ScoreParseError
 from ..tools.web_search import search_web
-
+from scrapping_agent import ScrappingAgent
 
 user = UserInputAgent("llama3.1:8b")
 analysed_agent = AnalysisWebSearchAgent("llama3.1:8b")
+scrapping_agent = ScrappingAgent("llama3.1:8b")
 
 while True:
     try:
@@ -47,4 +50,12 @@ while True:
         
         # Calcul de la moitié (arrondi au supérieur pour toujours garder au moins 1 résultat)
         top_half_count = math.ceil(len(analysed) / 2)
-        top_results = analysed[:top_half_count]
+        top_results:List[Dict[str, Any]] = analysed[:top_half_count]
+        
+        for result in top_results:
+            scrape_result = scrape(result['link'])
+            if scrape_result['success']:
+                scrapping_agent.load_markdown(scrape_result["markdown"])
+                response = scrapping_agent.chat(
+                    query="What is Bitcoin's current price and market cap?",
+                )
