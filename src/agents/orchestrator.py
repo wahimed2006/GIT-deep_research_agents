@@ -2,21 +2,21 @@ import sys
 from pathlib import Path
 import math
 from typing import Dict, List, Any
+from concurrent.futures import ThreadPoolExecutor, as_completed
 
 if __package__ is None or __package__ == "":
     sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
     __package__ = "src.agents"
 
-from ..scraper import *
+from ..scraper import scrape
 from .user_input_agent import UserInputAgent
-from .analysis_agent import AnalysisWebSearchAgent, ScoreParseError
+from .analysis_agent import AnalysisWebSearchAgent
 from .no_tools_calling_agent import SimpleAgent
 from ..tools.web_search import search_web
 from .scrapping_agent import ScrappingAgent
 
 
 user = UserInputAgent("llama3.1:8b")
-analysed_agent = AnalysisWebSearchAgent("llama3.1:8b")
 scrapping_agent = ScrappingAgent("llama3.1:8b")
 synthesis_agent = SimpleAgent(
     "llama3.1:8b",
@@ -26,6 +26,41 @@ synthesis_agent = SimpleAgent(
         "avoid unsupported claims, and cite the relevant source URLs."
     )
 )
+
+
+def score_single_result(
+    model_name: str,
+    question: str,
+    item: Dict[str, Any]
+) -> Dict[str, Any]:
+    """Score one search result in an isolated worker agent."""
+    link = item.get("href") or item.get("link") or ""
+    title = item.get("title", "")
+    body = item.get("body", "")
+
+    result: Dict[str, Any] = {
+        "query": question,
+        "title": title,
+        "link": link,
+        "body": body,
+        "relevance_score": 0,
+    }
+    if not link:
+        result["score_error"] = "Empty URL"
+        return result
+
+    try:
+        agent = AnalysisWebSearchAgent(model_name)
+        result["relevance_score"] = agent.score_relevance(
+            query=question,
+            title=title,
+            link=link,
+            body=body,
+        )
+    except Exception as error:
+        result["score_error"] = str(error)
+
+    return result
 
 
 while True:
@@ -44,16 +79,27 @@ while True:
     user.reset()
     content = user.parse_subrequests(questions.content)
     
-    i = 1
-    analysed = []
-    for question in content:
-        print(f"\n=== Sub-request {i}: {question} ===\n")
-        
-        # Search web
+    search_tasks: List[tuple[str, Dict[str, Any]]] = []
+    for index, question in enumerate(content, 1):
+        print(f"\n=== Sub-request {index}: {question} ===\n")
         web_search = search_web(query=question, max_results=5)
         print(f"Found {len(web_search)} results\n")
-        analysed += analysed_agent.web_search_score(query=question, web_search_result=web_search)
-        i += 1
+        search_tasks.extend((question, item) for item in web_search)
+
+    analysed: List[Dict[str, Any]] = []
+    print(f"\n[Analyse] Scoring en parallèle de {len(search_tasks)} résultats...")
+    with ThreadPoolExecutor(max_workers=4) as executor:
+        futures = [
+            executor.submit(score_single_result, "llama3.1:8b", question, item)
+            for question, item in search_tasks
+        ]
+        for future in as_completed(futures):
+            result = future.result()
+            analysed.append(result)
+            print(
+                f"  ✓ [{result['relevance_score']}/100] "
+                f"{result.get('title', 'N/A')[:50]}"
+            )
     
     if analysed:
         # Tri global par ordre décroissant de score
