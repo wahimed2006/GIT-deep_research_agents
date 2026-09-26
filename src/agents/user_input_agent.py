@@ -25,7 +25,7 @@ class UserInputAgent(SimpleAgent):
     can execute independently.
     
     Example:
-        >>> agent = UserInputAgent("llama3.1:8b")
+        >>> agent = UserInputAgent("llama3.2:3b")
         >>> response = agent.chat("Analyse le marché des bourses du jour")
         >>> print(response.content)
     """
@@ -38,7 +38,7 @@ class UserInputAgent(SimpleAgent):
                        with good instruction-following capabilities.
         
         Example:
-            >>> agent = UserInputAgent("llama3.1:8b")
+            >>> agent = UserInputAgent("llama3.2:3b")
         """
         super().__init__(model_name, INPUT_AGENT_PROMPT)
         self.options = {
@@ -79,7 +79,7 @@ class UserInputAgent(SimpleAgent):
         return subrequests
 
 if __name__ == "__main__":
-    agent = UserInputAgent("llama3.1:8b")
+    agent = UserInputAgent("llama3.2:3b")
     
     print("UserInputAgent initialized. Enter queries to decompose.\n")
     print("Type 'quit' or 'exit' to end.\n")

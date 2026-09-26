@@ -273,7 +273,7 @@ Score: """
 
 
 if __name__ == "__main__":
-    agent = AnalysisWebSearchAgent("llama3.1:8b")
+    agent = AnalysisWebSearchAgent("llama3.2:3b")
     
     print("AnalysisWebSearchAgent initialized (BATCH MODE).\n")
     

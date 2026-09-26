@@ -10,6 +10,7 @@ import ollama
 from .agent import Agent
 from ..tools import AgentResponse
 from typing import override
+from functools import lru_cache
 
 
 class ToolCallingAgent(Agent):
@@ -43,7 +44,7 @@ class ToolCallingAgent(Agent):
         ...         }
         ...     }
         ... ]
-        >>> agent = ToolCallingAgent("llama3.1:8b", tools=tools)
+        >>> agent = ToolCallingAgent("llama3.2:3b", tools=tools)
     """
     
     def __init__(
@@ -65,19 +66,20 @@ class ToolCallingAgent(Agent):
         
         Example:
             >>> tools = [{"type": "function", "function": {...}}]
-            >>> agent = ToolCallingAgent("llama3.1:8b", tools=tools)
+            >>> agent = ToolCallingAgent("llama3.2:3b", tools=tools)
         """
         # Check tool support before initialization
         if not self._supports_tools(model_name):
             raise ValueError(
                 f"Model '{model_name}' does not support tool calling. "
-                f"Use a model like 'llama3.1:8b', 'qwen2.5:7b', or 'mistral:7b'."
+                f"Use a model like 'llama3.2:3b', 'qwen2.5:7b', or 'mistral:7b'."
             )
         
         super().__init__(model_name, system_prompt)
         self.tools = tools
     
     @staticmethod
+    @lru_cache(maxsize=32)
     def _supports_tools(model_name: str) -> bool:
         """Check if an Ollama model supports tool calling.
         
@@ -95,7 +97,7 @@ class ToolCallingAgent(Agent):
             requests.RequestException: If the Ollama API is unreachable.
         
         Example:
-            >>> ToolCallingAgent._supports_tools("llama3.1:8b")
+            >>> ToolCallingAgent._supports_tools("llama3.2:3b")
             True
             >>> ToolCallingAgent._supports_tools("gemma2:9b")
             False
@@ -129,7 +131,7 @@ class ToolCallingAgent(Agent):
             >>> print(f"Found {len(supported)} known models")
         """
         return [
-            "llama3.1:8b",
+            "llama3.2:3b",
             "llama3.1:70b",
             "llama3.2:1b",
             "llama3.2:3b",
@@ -180,7 +182,7 @@ class ToolCallingAgent(Agent):
             Exception: Propagates errors from the Ollama API call.
         
         Example:
-            >>> agent = ToolCallingAgent("llama3.1:8b", tools=[...])
+            >>> agent = ToolCallingAgent("llama3.2:3b", tools=[...])
             >>> response = agent.chat("What's the weather in Paris?")
             >>> if response.tool_calls:
             ...     print("Model requested tools:", response.tool_calls)
@@ -260,7 +262,7 @@ if __name__ == "__main__":
     
     try:
         agent = ToolCallingAgent(
-            "llama3.1:8b",
+            "llama3.2:3b",
             tools=weather_tool,
             system_prompt="You are a helpful assistant with access to weather tools."
         )
