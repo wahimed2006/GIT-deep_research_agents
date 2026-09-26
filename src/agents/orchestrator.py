@@ -24,7 +24,7 @@ synthesis_agent = SimpleAgent(
     system_prompt=(
         "You are a research synthesis agent. Answer the user's original question "
         "using only the extracted source information provided. Reconcile conflicts, "
-        "avoid unsupported claims, and cite the relevant source URLs."
+        "avoid unsupported claims, and cite the relevant source URLs  if  you judge it will help the user to more understand the answer."
     )
 )
 
