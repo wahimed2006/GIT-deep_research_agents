@@ -7,6 +7,7 @@ clean, structured Markdown optimized for LLM understanding.
 from typing import Dict, Any, Optional, List, Tuple
 from datetime import datetime
 from markdownify import markdownify
+from .cleaner import is_noise_text
 
 
 # =============================================================================
@@ -15,6 +16,7 @@ from markdownify import markdownify
 
 # Output limits
 MAX_HEADINGS_IN_TOC: int = 15
+MAX_NAVIGATION_LINKS: int = 60
 MAX_OUTPUT_LENGTH: int = 20000
 TRUNCATION_THRESHOLD_RATIO: float = 0.8
 
@@ -245,6 +247,75 @@ def format_links(links: List[Dict[str, str]]) -> str:
     return "\n".join(lines)
 
 
+def _truncate_lines(text: str, max_length: int) -> str:
+    """Truncate Markdown without cutting a line or a Markdown construct."""
+    if max_length <= 0:
+        return ""
+    if len(text) <= max_length:
+        return text
+
+    lines: List[str] = []
+    current_length = 0
+    for line in text.splitlines():
+        line_length = len(line) + (1 if lines else 0)
+        if current_length + line_length > max_length:
+            break
+        lines.append(line)
+        current_length += line_length
+
+    truncated = "\n".join(lines).rstrip()
+    if not truncated:
+        return TRUNCATION_MESSAGE[:max_length]
+    return f"{truncated}\n\n{TRUNCATION_MESSAGE}"
+
+
+def format_for_navigation(
+    structured_content: Dict[str, Any],
+    url: str,
+    fetch_method: str,
+    max_length: int = 6000
+) -> str:
+    """Format a compact page summary for navigation decisions.
+
+    The navigation view intentionally excludes paragraphs, lists, and tables.
+    It gives the model only enough context to decide whether to read the page
+    more deeply or follow one of its outgoing links.
+    """
+    lines: List[str] = [
+        "# Navigation Summary",
+        f"## URL: {url}",
+        f"## Fetched: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}",
+        f"## Method: {fetch_method}",
+        "",
+    ]
+
+    metadata = format_metadata(structured_content.get("metadata", {}))
+    if metadata:
+        lines.extend(["## Metadata", metadata, ""])
+
+    headings = structured_content.get("headings", [])
+    if headings:
+        lines.append(SECTION_TOC)
+        lines.append("")
+        for heading in headings[:MAX_HEADINGS_IN_TOC]:
+            text = heading.get("text", "")
+            if text and not is_noise_text(text):
+                lines.append(f"- {text}")
+        lines.append("")
+
+    links = structured_content.get("links", [])
+    if links:
+        lines.extend([SECTION_LINKS, ""])
+        for link in links[:MAX_NAVIGATION_LINKS]:
+            text = link.get("text", "").strip()
+            href = link.get("href", "").strip()
+            if text and href:
+                lines.append(f"- [{text}]({href})")
+        lines.append("")
+
+    return _truncate_lines("\n".join(lines).strip(), max_length)
+
+
 def format_web_content(structured_content: Dict[str, Any]) -> str:
     """Format WEB_CONTENT preserving visual layout.
     
@@ -262,23 +333,26 @@ def format_web_content(structured_content: Dict[str, Any]) -> str:
     lines.append(SECTION_WEB_CONTENT)
     lines.append("")
     
-    # Headings (in order, with indentation)
+    # Headings (skip noise)
     headings = structured_content.get('headings', [])
     if headings:
         for h in headings:
-            level = h.get('level', 'h1')
             text = h.get('text', '')
+            # Skip noise headings
+            if is_noise_text(text):
+                continue
+            level = h.get('level', 'h1')
             if text:
                 level_num = int(level[1]) if len(level) > 1 and level[1:].isdigit() else 1
                 indent = '  ' * (level_num - 1)
                 lines.append(f"{indent}## {text}")
         lines.append("")
     
-    # Paragraphs (in order, as they appear)
+    # Paragraphs (skip noise)
     paragraphs = structured_content.get('paragraphs', [])
     if paragraphs:
         for p in paragraphs:
-            if p and len(p) >= 30:
+            if p and len(p) >= 30 and not is_noise_text(p):
                 lines.append(p)
         lines.append("")
     
@@ -369,44 +443,25 @@ def format_for_llm(
     if toc_md:
         lines.append(toc_md)
     
-    # WEB_CONTENT section (new)
+    # WEB_CONTENT is the single detailed reading view. Do not append the
+    # extracted paragraphs, lists, tables, or links a second time.
     if include_web_content:
         web_content_md = format_web_content(structured_content)
         if web_content_md:
             lines.append(web_content_md)
-    
-    # Main content (paragraphs)
-    content_md = format_paragraphs(structured_content['paragraphs'])
-    if content_md:
-        lines.append(content_md)
-    
-    # Lists
-    lists_md = format_lists(structured_content['lists'])
-    if lists_md:
-        lines.append(lists_md)
-    
-    # Tables
-    tables_md = format_tables(structured_content['tables'])
-    if tables_md:
-        lines.append(tables_md)
-    
-    # Links
-    links_md = format_links(structured_content['links'])
-    if links_md:
-        lines.append(links_md)
-    
-    # Join and truncate
-    full_md = "\n".join(lines)
-    
-    if len(full_md) > max_length:
-        # Truncate at a section boundary if possible
-        truncated = full_md[:max_length]
-        last_section = truncated.rfind(SECTION_DIVIDER)
-        if last_section > max_length * TRUNCATION_THRESHOLD_RATIO:
-            truncated = truncated[:last_section]
-        full_md = truncated + "\n\n" + TRUNCATION_MESSAGE
-    
-    return full_md
+    else:
+        # Keep the opt-out useful for callers that explicitly request the
+        # legacy structured sections without duplicating WEB_CONTENT.
+        for section in (
+            format_paragraphs(structured_content.get('paragraphs', [])),
+            format_lists(structured_content.get('lists', [])),
+            format_tables(structured_content.get('tables', [])),
+            format_links(structured_content.get('links', [])),
+        ):
+            if section:
+                lines.append(section)
+
+    return _truncate_lines("\n".join(lines), max_length)
 
 
 def format_into_blocks(
@@ -448,31 +503,23 @@ def format_into_blocks(
     if toc_md:
         blocks.append((BLOCK_TYPES["toc"], toc_md))
     
-    # Block 3: WEB_CONTENT (optional)
+    # Block 3: WEB_CONTENT is the single detailed reading view.
     if include_web_content:
         web_content_md = format_web_content(structured_content)
         if web_content_md:
             blocks.append((BLOCK_TYPES["web_content"], web_content_md))
-    
-    # Block 4: Main Content (paragraphs)
-    content_md = format_paragraphs(structured_content['paragraphs'])
-    if content_md:
-        blocks.append((BLOCK_TYPES["content"], content_md))
-    
-    # Block 5: Lists
-    lists_md = format_lists(structured_content['lists'])
-    if lists_md:
-        blocks.append((BLOCK_TYPES["lists"], lists_md))
-    
-    # Block 6: Tables
-    tables_md = format_tables(structured_content['tables'])
-    if tables_md:
-        blocks.append((BLOCK_TYPES["tables"], tables_md))
-    
-    # Block 7: Links
-    links_md = format_links(structured_content['links'])
-    if links_md:
-        blocks.append((BLOCK_TYPES["links"], links_md))
+    else:
+        # Explicit opt-out keeps the old granular blocks available without
+        # combining them with WEB_CONTENT.
+        sections = (
+            ("content", format_paragraphs(structured_content.get('paragraphs', []))),
+            ("lists", format_lists(structured_content.get('lists', []))),
+            ("tables", format_tables(structured_content.get('tables', []))),
+            ("links", format_links(structured_content.get('links', []))),
+        )
+        for block_type, content in sections:
+            if content:
+                blocks.append((BLOCK_TYPES[block_type], content))
     
     return blocks
 

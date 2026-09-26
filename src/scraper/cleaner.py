@@ -6,6 +6,11 @@ and extracting semantically meaningful content.
 
 from bs4 import BeautifulSoup, Tag
 from typing import Dict, Any, List, Optional, Set
+from urllib.parse import urljoin
+import re
+
+
+HTML_PARSER = 'lxml'
 
 
 # =============================================================================
@@ -113,16 +118,27 @@ def should_keep_element(element: Tag) -> bool:
             if element.parent and element.parent.name == 'figure':
                 return True
         
-        # Keep <div>/<span> if contains kept children
+        # Keep <div>/<span> if it contains retained direct children. Children
+        # are evaluated first by clean_html, so this avoids scanning descendants.
         if element.name in ['div', 'span']:
             kept_children = [
                 child for child in element.children
-                if isinstance(child, Tag) and should_keep_element(child)
+                if isinstance(child, Tag) and child.name not in IGNORE_TAGS
             ]
             if kept_children:
                 return True
     
     return False
+
+
+def is_metric_heading(text: str) -> bool:
+    """Return True for numeric dashboard values incorrectly marked as headings."""
+    normalized = text.strip().replace(',', '')
+    return bool(re.fullmatch(
+        r'[+-]?\s*(?:[$€£¥]\s*)?\d+(?:\.\d+)?\s*(?:[$€£¥]|[KMBT%])?',
+        normalized,
+        re.IGNORECASE
+    ))
 
 
 def clean_html(html: str) -> str:
@@ -140,30 +156,44 @@ def clean_html(html: str) -> str:
         >>> "script" not in clean
         True
     """
-    soup = BeautifulSoup(html, 'html.parser')
-    
-    # Remove head section entirely
+    soup = BeautifulSoup(html, HTML_PARSER)
+
+    # Keep title and metadata, but remove executable and layout-only head tags.
     head = soup.find('head')
     if head:
-        head.decompose()
-    
-    # Find all elements and remove unwanted ones
-    all_elements = soup.find_all(True)  # All tags
-    
-    for element in reversed(all_elements):  # Reverse to avoid index issues
-        if not should_keep_element(element):
-            # Check if element has any kept descendants
-            kept_descendants = [
-                desc for desc in element.descendants
-                if isinstance(desc, Tag) and should_keep_element(desc)
-            ]
-            
-            # If no kept descendants, remove entirely
-            if not kept_descendants:
+        for element in head.find_all(['script', 'style', 'noscript', 'link', 'base']):
+            element.decompose()
+
+    # Process children before parents. This keeps the work proportional to the
+    # number of tags instead of repeatedly walking every descendant subtree.
+    all_elements = soup.find_all(True)
+    for element in reversed(all_elements):
+        if element.parent is None:
+            continue
+
+        # Tables are already structured data. Keep their cell descendants so
+        # icons, labels, prices, and links remain available to the table parser.
+        if element.name == 'table' or element.find_parent('table') is not None:
+            if element.name in IGNORE_TAGS:
                 element.decompose()
-            # If has kept descendants, unwrap (keep children, remove tag)
-            else:
-                element.unwrap()
+            continue
+
+        # Metadata is needed by extract_content_structure after cleaning.
+        if head and (element is head or element.find_parent('head') is head):
+            if element.name in {'head', 'title', 'meta'}:
+                continue
+
+        if should_keep_element(element):
+            continue
+
+        has_retained_child = any(
+            isinstance(child, Tag) and child.parent is element
+            for child in element.children
+        )
+        if has_retained_child:
+            element.unwrap()
+        else:
+            element.decompose()
     
     return str(soup)
 
@@ -243,17 +273,21 @@ def extract_metadata(soup: BeautifulSoup) -> Dict[str, Optional[str]]:
         metadata["published_date"] = _get_meta_content(pub_tag)
     
     return metadata
-def extract_content_structure(html: str) -> Dict[str, Any]:
+def extract_content_structure(
+    html: str,
+    base_url: Optional[str] = None
+) -> Dict[str, Any]:
     """Extract structured content from HTML.
     
     Args:
         html: Raw HTML string.
+        base_url: Optional page URL used to resolve relative links.
     
     Returns:
         Dictionary with 'title', 'headings', 'paragraphs', 'lists', 
         'tables', 'links', 'body_text' keys.
     """
-    soup = BeautifulSoup(html, 'html.parser')
+    soup = BeautifulSoup(html, HTML_PARSER)
     
     # Extract metadata
     metadata = extract_metadata(soup)
@@ -262,7 +296,12 @@ def extract_content_structure(html: str) -> Dict[str, Any]:
     headings: List[Dict[str, str]] = []
     for h in soup.find_all(HEADING_TAGS):
         text = h.get_text(strip=True)
-        if text and len(text) < MAX_HEADINGS_TEXT_LENGTH:
+        if (
+            text
+            and len(text) < MAX_HEADINGS_TEXT_LENGTH
+            and h.find_parent('table') is None
+            and not is_metric_heading(text)
+        ):
             level = h.name if isinstance(h.name, str) else "h1"
             headings.append({
                 "level": level,
@@ -307,7 +346,7 @@ def extract_content_structure(html: str) -> Dict[str, Any]:
         if text and len(text) < MAX_LINK_TEXT_LENGTH and href and isinstance(href, str):
             links.append({
                 "text": text,
-                "href": href
+                "href": urljoin(base_url, href) if base_url else href
             })
     
     # Limit outputs
@@ -326,3 +365,41 @@ def extract_content_structure(html: str) -> Dict[str, Any]:
         "links": links,
         "body_text": body_text[:MAX_BODY_TEXT_LENGTH]
     }
+    
+def is_noise_text(text: str) -> bool:
+    """Check if text is likely noise (cookies, privacy, etc.).
+    
+    Args:
+        text: The text to check.
+    
+    Returns:
+        True if the text appears to be noise.
+    """
+    text_lower = text.lower()
+    
+    # Noise patterns
+    noise_patterns = {
+        'cookie', 'privacy', 'consent', 'gdpr',
+        'strictly necessary', 'functional cookies',
+        'targeting cookies', 'performance cookies',
+        'device characteristics', 'geolocation',
+        'personalised advertising', 'advertising profiles',
+        'store and/or access', 'match and combine data',
+        'link different devices', 'identify devices',
+        'ensure security, prevent and detect fraud',
+        'deliver and present advertising',
+        'measure advertising performance',
+        'understand audiences through statistics',
+        'save and communicate privacy choices'
+    }
+    
+    # Check if text contains noise patterns
+    for pattern in noise_patterns:
+        if pattern in text_lower:
+            return True
+    
+    # Very long privacy/legal text
+    if len(text) > 500 and any(word in text_lower for word in ['cookie', 'privacy', 'data', 'device']):
+        return True
+    
+    return False

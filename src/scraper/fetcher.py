@@ -5,7 +5,7 @@ automatically choosing between httpx (fast) and Playwright (for JS-heavy sites).
 """
 
 import httpx
-from playwright.sync_api import sync_playwright
+from playwright.sync_api import Browser, Page, sync_playwright
 from typing import Literal, Optional, Dict, Any, List, Set
 from datetime import datetime
 
@@ -68,6 +68,74 @@ class FetchError(Exception):
     pass
 
 
+class PlaywrightSession:
+    """Reusable Playwright browser session for sequential fetches."""
+
+    def __init__(self) -> None:
+        self._playwright = None
+        self.browser: Optional[Browser] = None
+
+    def __enter__(self) -> "PlaywrightSession":
+        self._playwright = sync_playwright().start()
+        try:
+            self.browser = self._playwright.chromium.launch(
+                headless=True,
+                args=BROWSER_ARGS
+            )
+        except Exception:
+            self._playwright.stop()
+            self._playwright = None
+            raise
+        return self
+
+    def __exit__(self, exc_type: Any, exc_value: Any, traceback: Any) -> None:
+        try:
+            if self.browser is not None:
+                self.browser.close()
+        finally:
+            self.browser = None
+            if self._playwright is not None:
+                self._playwright.stop()
+                self._playwright = None
+
+    def fetch(
+        self,
+        url: str,
+        timeout: int = DEFAULT_PLAYWRIGHT_TIMEOUT,
+        wait_until: WaitUntilState | None = "domcontentloaded",
+        wait_for_selector: Optional[str] = None
+    ) -> Dict[str, Any]:
+        """Fetch one page using the shared browser."""
+        if self.browser is None:
+            raise FetchError("PlaywrightSession must be used as a context manager")
+
+        page: Page = self.browser.new_page()
+        try:
+            page.set_extra_http_headers({"User-Agent": USER_AGENT})
+            response = page.goto(
+                url,
+                timeout=timeout * 1000,
+                wait_until=wait_until
+            )
+
+            if wait_for_selector:
+                page.wait_for_selector(
+                    wait_for_selector,
+                    timeout=timeout * 1000
+                )
+
+            return {
+                "html": page.content(),
+                "status_code": response.status if response else 0,
+                "method": "playwright",
+                "timestamp": datetime.now().isoformat(),
+                "url": url,
+                "success": True
+            }
+        finally:
+            page.close()
+
+
 # =============================================================================
 # FUNCTIONS
 # =============================================================================
@@ -119,7 +187,9 @@ def fetch_with_httpx(
 def fetch_with_playwright(
     url: str,
     timeout: int = DEFAULT_PLAYWRIGHT_TIMEOUT,
-    wait_until: WaitUntilState | None = "domcontentloaded"
+    wait_until: WaitUntilState | None = "domcontentloaded",
+    wait_for_selector: Optional[str] = None,
+    session: Optional[PlaywrightSession] = None
 ) -> Dict[str, Any]:
     """Fetch HTML using Playwright (for JavaScript-heavy sites).
     
@@ -128,6 +198,8 @@ def fetch_with_playwright(
         timeout: Page load timeout in seconds.
         wait_until: When to consider navigation complete.
                    Options: 'load', 'domcontentloaded', 'networkidle', 'commit'.
+        wait_for_selector: Optional selector to wait for after navigation.
+        session: Optional reusable Playwright session.
     
     Returns:
         Dictionary with 'html', 'status_code', 'method', 'timestamp' keys.
@@ -136,38 +208,21 @@ def fetch_with_playwright(
         FetchError: If the browser fails to load the page.
     """
     try:
-        with sync_playwright() as p:
-            browser = p.chromium.launch(headless=True, args=BROWSER_ARGS)
-            
-            page = browser.new_page()
-            
-            page.set_extra_http_headers({"User-Agent": USER_AGENT})
-            
-            response = page.goto(
+        if session is not None:
+            return session.fetch(
                 url,
-                timeout=timeout * 1000,
-                wait_until=wait_until
+                timeout=timeout,
+                wait_until=wait_until,
+                wait_for_selector=wait_for_selector
             )
-            
-            # Wait for network to be idle (JS loaded)
-            try:
-                page.wait_for_load_state("networkidle", timeout=timeout * 1000)
-            except Exception:
-                pass
-            
-            html = page.content()
-            status_code = response.status if response else 0
-            
-            browser.close()
-            
-            return {
-                "html": html,
-                "status_code": status_code,
-                "method": "playwright",
-                "timestamp": datetime.now().isoformat(),
-                "url": url,
-                "success": True
-            }
+
+        with PlaywrightSession() as local_session:
+            return local_session.fetch(
+                url,
+                timeout=timeout,
+                wait_until=wait_until,
+                wait_for_selector=wait_for_selector
+            )
     
     except Exception as e:
         raise FetchError(f"Playwright failed: {e}")
@@ -212,7 +267,8 @@ def fetch_content(
     url: str,
     timeout_httpx: int = DEFAULT_HTTPX_TIMEOUT,
     timeout_playwright: int = DEFAULT_PLAYWRIGHT_TIMEOUT,
-    force_playwright: bool = False
+    force_playwright: bool = False,
+    session: Optional[PlaywrightSession] = None
 ) -> Dict[str, Any]:
     """Fetch HTML content with automatic JS detection.
     
@@ -224,6 +280,7 @@ def fetch_content(
         timeout_httpx: Timeout for httpx requests in seconds.
         timeout_playwright: Timeout for Playwright in seconds.
         force_playwright: If True, skip httpx and use Playwright directly.
+        session: Optional reusable Playwright session for Playwright fallbacks.
     
     Returns:
         Dictionary with 'html', 'method', 'success', 'url', 'timestamp' keys.
@@ -238,7 +295,11 @@ def fetch_content(
     # Force Playwright if requested
     if force_playwright:
         try:
-            return fetch_with_playwright(url, timeout=timeout_playwright)
+            return fetch_with_playwright(
+                url,
+                timeout=timeout_playwright,
+                session=session
+            )
         except FetchError as e:
             return {
                 "url": url,
@@ -257,7 +318,11 @@ def fetch_content(
         if is_js_heavy(html):
             # Try Playwright for better content
             try:
-                pw_result = fetch_with_playwright(url, timeout=timeout_playwright)
+                pw_result = fetch_with_playwright(
+                    url,
+                    timeout=timeout_playwright,
+                    session=session
+                )
                 # Use Playwright result if it has more content
                 if len(pw_result["html"]) > len(html) * DEFAULT_CONTENT_MULTIPLIER:
                     return pw_result
@@ -269,7 +334,11 @@ def fetch_content(
     except FetchError as e:
         # Fallback to Playwright
         try:
-            return fetch_with_playwright(url, timeout=timeout_playwright)
+            return fetch_with_playwright(
+                url,
+                timeout=timeout_playwright,
+                session=session
+            )
         except FetchError as pw_error:
             return {
                 "url": url,

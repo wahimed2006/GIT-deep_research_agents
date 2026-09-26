@@ -5,9 +5,15 @@ fetching, cleaning, and formatting web content for LLM consumption.
 """
 
 from typing import Dict, Any, Optional, List
-from .fetcher import fetch_content, FetchError, DEFAULT_HTTPX_TIMEOUT, DEFAULT_PLAYWRIGHT_TIMEOUT
+from .fetcher import (
+    fetch_content,
+    FetchError,
+    PlaywrightSession,
+    DEFAULT_HTTPX_TIMEOUT,
+    DEFAULT_PLAYWRIGHT_TIMEOUT,
+)
 from .cleaner import clean_html, extract_content_structure
-from .formatter import format_for_llm, MAX_OUTPUT_LENGTH
+from .formatter import format_for_llm, format_for_navigation, MAX_OUTPUT_LENGTH
 
 
 # =============================================================================
@@ -52,7 +58,8 @@ def scrape(
     timeout_playwright: int = DEFAULT_TIMEOUT_PLAYWRIGHT,
     force_playwright: bool = False,
     format_markdown: bool = DEFAULT_FORMAT_MARKDOWN,
-    max_output_length: int = DEFAULT_MAX_OUTPUT_LENGTH
+    max_output_length: int = DEFAULT_MAX_OUTPUT_LENGTH,
+    session: Optional[PlaywrightSession] = None
 ) -> Dict[str, Any]:
     """Scrape a URL and return structured content.
     
@@ -66,6 +73,7 @@ def scrape(
         force_playwright: If True, use Playwright directly.
         format_markdown: If True, format output as Markdown.
         max_output_length: Maximum length of formatted output.
+        session: Optional reusable Playwright session.
     
     Returns:
         Dictionary with scraping results:
@@ -93,7 +101,8 @@ def scrape(
             url=url,
             timeout_httpx=timeout_httpx,
             timeout_playwright=timeout_playwright,
-            force_playwright=force_playwright
+            force_playwright=force_playwright,
+            session=session
         )
         
         if not fetch_result["success"]:
@@ -102,6 +111,7 @@ def scrape(
                 "url": url,
                 "method": fetch_result.get("method", "unknown"),
                 "structured": None,
+                "navigation": None,
                 "markdown": None,
                 "error": fetch_result.get("error", "Unknown fetch error")
             }
@@ -113,7 +123,13 @@ def scrape(
         cleaned_html = clean_html(html)
         
         # Step 3: Extract structured content
-        structured = extract_content_structure(cleaned_html)
+        structured = extract_content_structure(cleaned_html, base_url=url)
+
+        navigation = format_for_navigation(
+            structured_content=structured,
+            url=url,
+            fetch_method=method
+        )
         
         # Step 4: Format as Markdown (optional)
         markdown: Optional[str] = None
@@ -130,6 +146,7 @@ def scrape(
             "url": url,
             "method": method,
             "structured": structured,
+            "navigation": navigation,
             "markdown": markdown,
             "error": None
         }
@@ -140,6 +157,7 @@ def scrape(
             "url": url,
             "method": "unknown",
             "structured": None,
+            "navigation": None,
             "markdown": None,
             "error": f"Scraping failed: {e}"
         }
@@ -149,7 +167,8 @@ def scrape_multiple(
     urls: List[str],
     timeout_httpx: int = DEFAULT_TIMEOUT_HTTPX,
     timeout_playwright: int = DEFAULT_TIMEOUT_PLAYWRIGHT,
-    max_concurrent: int = DEFAULT_MAX_CONCURRENT
+    max_concurrent: int = DEFAULT_MAX_CONCURRENT,
+    session: Optional[PlaywrightSession] = None
 ) -> List[Dict[str, Any]]:
     """Scrape multiple URLs sequentially.
     
@@ -158,6 +177,7 @@ def scrape_multiple(
         timeout_httpx: Timeout for httpx requests in seconds.
         timeout_playwright: Timeout for Playwright in seconds.
         max_concurrent: Maximum concurrent scrapes (for future async).
+        session: Optional reusable Playwright session for browser fallbacks.
     
     Returns:
         List of scraping results (one per URL).
@@ -177,7 +197,8 @@ def scrape_multiple(
         result = scrape(
             url=url,
             timeout_httpx=timeout_httpx,
-            timeout_playwright=timeout_playwright
+            timeout_playwright=timeout_playwright,
+            session=session
         )
         results.append(result)
     
@@ -200,7 +221,7 @@ if __name__ == "__main__":
             print(f"  Title: {result['structured']['metadata'].get('title', 'N/A')}")
             print(f"  Paragraphs: {len(result['structured']['paragraphs'])}")
             print(f"  Markdown length: {len(result['markdown']) if result['markdown'] else 0}")
-            print(result["structured"]["body_text"])
+            print(result['markdown'])
         else:
             print(f"  ✗ Failed: {result['error']}")
         
