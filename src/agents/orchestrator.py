@@ -31,7 +31,8 @@ while True:
         break
     
     # Decompose query
-    questions = user.chat(query, stream=False)
+    questions = user.chat(query, stream=True)
+    user.reset()
     content = user.parse_subrequests(questions.content)
     
     i = 1
@@ -52,6 +53,7 @@ while True:
                     body=result.get('body', '')
                 )
                 print(f"  [{j}] Score: {score}/100 - {result.get('title', 'N/A')[:60]}")
+                analyse.reset()
             
             except ScoreParseError as e:
                 print(f"  [{j}] Parse Error: {e}")

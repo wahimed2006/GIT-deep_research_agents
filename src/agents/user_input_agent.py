@@ -92,6 +92,7 @@ if __name__ == "__main__":
         
         try:
             response = agent.chat(query, stream=True)
+            agent.reset()
             print(f"\nDecomposed sub-requests:\n{response.content}\n")
         except Exception as e:
             print(f"\nError: {e}\n")
