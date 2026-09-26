@@ -10,6 +10,7 @@ if __package__ is None or __package__ == "":
 from ..scraper import *
 from .user_input_agent import UserInputAgent
 from .analysis_agent import AnalysisWebSearchAgent, ScoreParseError
+from .no_tools_calling_agent import SimpleAgent
 from ..tools.web_search import search_web
 from .scrapping_agent import ScrappingAgent
 
@@ -17,6 +18,14 @@ from .scrapping_agent import ScrappingAgent
 user = UserInputAgent("llama3.1:8b")
 analysed_agent = AnalysisWebSearchAgent("llama3.1:8b")
 scrapping_agent = ScrappingAgent("llama3.1:8b")
+synthesis_agent = SimpleAgent(
+    "llama3.1:8b",
+    system_prompt=(
+        "You are a research synthesis agent. Answer the user's original question "
+        "using only the extracted source information provided. Reconcile conflicts, "
+        "avoid unsupported claims, and cite the relevant source URLs."
+    )
+)
 
 
 while True:
@@ -44,6 +53,7 @@ while True:
         web_search = search_web(query=question, max_results=5)
         print(f"Found {len(web_search)} results\n")
         analysed += analysed_agent.web_search_score(query=question, web_search_result=web_search)
+        i += 1
     
     if analysed:
         # Tri global par ordre décroissant de score
@@ -88,11 +98,33 @@ while True:
                 
                 # Reset agent for next iteration
                 scrapping_agent.reset()
+            else:
+                print(f"Scraping failed for {result['link']}: {scrape_result.get('error', 'unknown error')}")
         
-        # Print final aggregated response
+        if final_responses:
+            source_context = "\n\n".join(
+                f"Source: {response['source_url']}\n"
+                f"Title: {response['source_title']}\n"
+                f"Extracted information:\n{response['extracted_info']}"
+                for response in final_responses
+            )
+            synthesis_prompt = (
+                f"Original user question: {query}\n\n"
+                f"Extracted source information:\n{source_context}\n\n"
+                "Write the final answer in the language of the original question."
+            )
+            synthesis = synthesis_agent.chat(synthesis_prompt, stream=False)
+            synthesis_agent.reset()
+            final_answer = synthesis.content
+        else:
+            final_answer = "No usable source could be scraped for this question."
+
+        # Print final synthesized response
         print("\n" + "="*50)
         print("FINAL RESPONSE")
         print("="*50 + "\n")
+        print(final_answer)
+        print()
         
         for i, resp in enumerate(final_responses, 1):
             print(f"--- Source {i}: {resp['source_title']} ---")
