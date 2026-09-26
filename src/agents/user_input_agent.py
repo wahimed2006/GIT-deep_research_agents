@@ -41,6 +41,11 @@ class UserInputAgent(SimpleAgent):
             >>> agent = UserInputAgent("llama3.1:8b")
         """
         super().__init__(model_name, INPUT_AGENT_PROMPT)
+        self.options = {
+            "num_predict": 300,
+            "temperature": 0.0,
+            "num_ctx": 2048
+        }
 
     def parse_subrequests(self, text: str) -> List[str]:
         """Extract sub-requests from the agent's output.

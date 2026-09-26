@@ -42,6 +42,7 @@ class Agent:
         self.messages: list[Dict[str, str]] = [
             {"role": "system", "content": self.system_prompt}
         ]
+        self.options = None
         self._initialize()
         
     def  _initialize(self):
@@ -50,7 +51,8 @@ class Agent:
             model=self.model_name,
             messages=self.messages,
             stream=False,
-            keep_alive="1h"
+            keep_alive="1h",
+            options=self.options
         )
     
     def chat(self, query: str, stream: bool = True) -> AgentResponse[None]:
@@ -83,7 +85,8 @@ class Agent:
             response = ollama.chat(
                 model=self.model_name,
                 messages=self.messages,
-                stream=stream
+                stream=stream,
+                options=self.options
             )
         except Exception as e:
             # Remove the user message if the API call fails to keep history consistent

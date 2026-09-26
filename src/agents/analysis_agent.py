@@ -35,6 +35,11 @@ class AnalysisWebSearchAgent(SimpleAgent):
             model_name: The name of the Ollama model to use.
         """
         super().__init__(model_name, ANALYSIS_AGENT_PROMPT)
+        self.options = {
+            "num_predict": 300,
+            "temperature": 0.0,
+            "num_ctx": 2048
+        }
         
     def web_search_score(
         self,

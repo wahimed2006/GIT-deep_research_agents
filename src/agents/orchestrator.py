@@ -40,24 +40,4 @@ while True:
         print(f"Found {len(web_search)} results\n")
         an = analyse.web_search_score(query=question, web_search_result=web_search)
         print(an)
-        
-        # Score each result
-        """for j, result in enumerate(web_search, 1):
-            try:
-                score = analyse.score_relevance(
-                    query=question,
-                    title=result.get('title', ''),
-                    link=result.get('link', ''),
-                    body=result.get('body', '')
-                )
-                print(f"  [{j}] Score: {score}/100 - {result.get('title', 'N/A')[:60]}")
-                analyse.reset()
-            
-            except ScoreParseError as e:
-                print(f"  [{j}] Parse Error: {e}")
-            
-            except Exception as e:
-                print(f"  [{j}] Error: {e}")
-        """
-        
         i += 1
