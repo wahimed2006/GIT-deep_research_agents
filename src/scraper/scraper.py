@@ -95,6 +95,15 @@ def scrape(
         ...     if result["markdown"]:
         ...         print(result["markdown"][:500])
     """
+    if not url or not url.startswith(("http://", "https://")):
+        return {
+            "success": False,
+            "url": url,
+            "method": "none",
+            "structured": None,
+            "markdown": None,
+            "error": f"URL invalide ou vide : '{url}'"
+        }
     try:
         # Step 1: Fetch HTML
         fetch_result = fetch_content(
