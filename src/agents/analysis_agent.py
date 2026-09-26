@@ -14,7 +14,7 @@ if __package__ is None or __package__ == "":
 
 
 from .no_tools_calling_agent import SimpleAgent
-from ..prompt.analysis_agent_prompt import SEARCH_AGENT_PROMPT
+from ..prompt.analysis_agent_prompt import ANALYSIS_AGENT_PROMPT
 import re
 
 class ScoreParseError(Exception):
@@ -34,7 +34,7 @@ class AnalysisWebSearchAgent(SimpleAgent):
         Args:
             model_name: The name of the Ollama model to use.
         """
-        super().__init__(model_name, SEARCH_AGENT_PROMPT)
+        super().__init__(model_name, ANALYSIS_AGENT_PROMPT)
         
     def web_search_score(
         self,
