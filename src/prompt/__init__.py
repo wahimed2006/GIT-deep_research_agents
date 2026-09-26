@@ -1,1 +1,2 @@
 from .user_input_agent_prompt import INPUT_AGENT_PROMPT
+from  .scrapping_agent_prompt import SCRAPPING_AGENT_PROMPT
