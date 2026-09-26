@@ -29,6 +29,7 @@ DEFAULT_MAX_CONCURRENT: int = 3
 TEST_URLS: List[str] = [
     "https://www.wikipedia.org",
     "https://coinmarketcap.com",
+    "https://ollama.com/library/qwen3.8"
 ]
 
 
@@ -192,14 +193,14 @@ if __name__ == "__main__":
     
     for url in TEST_URLS:
         print(f"Scraping: {url}")
-        result = scrape(url)
+        result = scrape(url, force_playwright=True)
         
         if result["success"]:
             print(f"  ✓ Success (method: {result['method']})")
             print(f"  Title: {result['structured']['metadata'].get('title', 'N/A')}")
             print(f"  Paragraphs: {len(result['structured']['paragraphs'])}")
             print(f"  Markdown length: {len(result['markdown']) if result['markdown'] else 0}")
-            print(result)
+            print(result["structured"]["body_text"])
         else:
             print(f"  ✗ Failed: {result['error']}")
         

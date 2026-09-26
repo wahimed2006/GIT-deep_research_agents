@@ -4,7 +4,7 @@ This module provides functions to format extracted content into
 clean, structured Markdown optimized for LLM understanding.
 """
 
-from typing import Dict, Any, Optional, List
+from typing import Dict, Any, Optional, List, Tuple
 from datetime import datetime
 from markdownify import markdownify
 
@@ -15,7 +15,7 @@ from markdownify import markdownify
 
 # Output limits
 MAX_HEADINGS_IN_TOC: int = 15
-MAX_OUTPUT_LENGTH: int = 10000
+MAX_OUTPUT_LENGTH: int = 20000
 TRUNCATION_THRESHOLD_RATIO: float = 0.8
 
 # Section headers
@@ -24,6 +24,7 @@ SECTION_CONTENT: str = "## Content"
 SECTION_LISTS: str = "## Lists"
 SECTION_TABLES: str = "## Tables"
 SECTION_LINKS: str = "## Related Links"
+SECTION_WEB_CONTENT: str = "## WEB_CONTENT"
 
 # Section dividers
 SECTION_DIVIDER: str = "---"
@@ -51,6 +52,17 @@ DEFAULT_HEADING_STYLE: str = HEADING_STYLE_ATX
 # Markdownify options
 MARKDOWNIFY_BULLETS: str = "-"
 MARKDOWNIFY_STRIP_TAGS: List[str] = ["a"]
+
+# Block types for tokenization
+BLOCK_TYPES = {
+    "metadata": "metadata",
+    "toc": "toc",
+    "web_content": "web_content",
+    "content": "content",
+    "lists": "lists",
+    "tables": "tables",
+    "links": "links",
+}
 
 
 # =============================================================================
@@ -233,11 +245,88 @@ def format_links(links: List[Dict[str, str]]) -> str:
     return "\n".join(lines)
 
 
+def format_web_content(structured_content: Dict[str, Any]) -> str:
+    """Format WEB_CONTENT preserving visual layout.
+    
+    This creates a text representation that mirrors the visual structure
+    of the webpage, keeping elements in their original order and grouping.
+    
+    Args:
+        structured_content: Dictionary from extract_content_structure().
+    
+    Returns:
+        Formatted string preserving web layout.
+    """
+    lines: List[str] = []
+    
+    lines.append(SECTION_WEB_CONTENT)
+    lines.append("")
+    
+    # Headings (in order, with indentation)
+    headings = structured_content.get('headings', [])
+    if headings:
+        for h in headings:
+            level = h.get('level', 'h1')
+            text = h.get('text', '')
+            if text:
+                level_num = int(level[1]) if len(level) > 1 and level[1:].isdigit() else 1
+                indent = '  ' * (level_num - 1)
+                lines.append(f"{indent}## {text}")
+        lines.append("")
+    
+    # Paragraphs (in order, as they appear)
+    paragraphs = structured_content.get('paragraphs', [])
+    if paragraphs:
+        for p in paragraphs:
+            if p and len(p) >= 30:
+                lines.append(p)
+        lines.append("")
+    
+    # Lists (preserve structure, don't group)
+    lists = structured_content.get('lists', [])
+    if lists:
+        for i, list_items in enumerate(lists, 1):
+            if list_items:
+                lines.append(f"### List {i}")
+                for item in list_items:
+                    if item:
+                        lines.append(f"  • {item}")
+                lines.append("")
+    
+    # Tables (preserve structure)
+    tables = structured_content.get('tables', [])
+    if tables:
+        for i, table in enumerate(tables, 1):
+            if table:
+                lines.append(f"### Table {i}")
+                for row in table:
+                    if row:
+                        lines.append(' | '.join(row))
+                lines.append("")
+    
+    # Links (inline, as they appear)
+    links = structured_content.get('links', [])
+    if links:
+        lines.append("### Links")
+        for link in links[:30]:
+            text = link.get('text', '')
+            href = link.get('href', '')
+            if text and href:
+                lines.append(f"→ {text}: {href}")
+        lines.append("")
+    
+    lines.append(SECTION_DIVIDER)
+    lines.append("")
+    
+    return '\n'.join(lines)
+
+
 def format_for_llm(
     structured_content: Dict[str, Any],
     url: str,
     fetch_method: str,
-    max_length: int = MAX_OUTPUT_LENGTH
+    max_length: int = MAX_OUTPUT_LENGTH,
+    include_web_content: bool = True
 ) -> str:
     """Format structured content as Markdown for LLM consumption.
     
@@ -246,6 +335,7 @@ def format_for_llm(
         url: Source URL of the content.
         fetch_method: Fetch method used ('httpx' or 'playwright').
         max_length: Maximum length of the formatted output.
+        include_web_content: If True, include WEB_CONTENT section.
     
     Returns:
         Formatted Markdown string optimized for LLM understanding.
@@ -279,6 +369,12 @@ def format_for_llm(
     if toc_md:
         lines.append(toc_md)
     
+    # WEB_CONTENT section (new)
+    if include_web_content:
+        web_content_md = format_web_content(structured_content)
+        if web_content_md:
+            lines.append(web_content_md)
+    
     # Main content (paragraphs)
     content_md = format_paragraphs(structured_content['paragraphs'])
     if content_md:
@@ -311,6 +407,74 @@ def format_for_llm(
         full_md = truncated + "\n\n" + TRUNCATION_MESSAGE
     
     return full_md
+
+
+def format_into_blocks(
+    structured_content: Dict[str, Any],
+    url: str,
+    fetch_method: str,
+    include_web_content: bool = True
+) -> List[Tuple[str, str]]:
+    """Format content into separate blocks for tokenization.
+    
+    This allows the LLM to process each section independently,
+    which is faster than scanning the entire document.
+    
+    Args:
+        structured_content: Dictionary from extract_content_structure().
+        url: Source URL of the content.
+        fetch_method: Fetch method used ('httpx' or 'playwright').
+        include_web_content: If True, include WEB_CONTENT block.
+    
+    Returns:
+        List of tuples: (block_type, block_content).
+        Block types: 'metadata', 'toc', 'web_content', 'content', 'lists', 'tables', 'links'.
+    
+    Example:
+        >>> blocks = format_into_blocks(content, url, "httpx")
+        >>> for block_type, block_content in blocks:
+        ...     tokens = tokenize(block_content)  # Your tokenization logic
+        ...     process_block(block_type, tokens)
+    """
+    blocks: List[Tuple[str, str]] = []
+    
+    # Block 1: Metadata
+    meta_md = format_metadata(structured_content['metadata'])
+    if meta_md:
+        blocks.append((BLOCK_TYPES["metadata"], meta_md))
+    
+    # Block 2: Table of Contents
+    toc_md = format_headings(structured_content['headings'])
+    if toc_md:
+        blocks.append((BLOCK_TYPES["toc"], toc_md))
+    
+    # Block 3: WEB_CONTENT (optional)
+    if include_web_content:
+        web_content_md = format_web_content(structured_content)
+        if web_content_md:
+            blocks.append((BLOCK_TYPES["web_content"], web_content_md))
+    
+    # Block 4: Main Content (paragraphs)
+    content_md = format_paragraphs(structured_content['paragraphs'])
+    if content_md:
+        blocks.append((BLOCK_TYPES["content"], content_md))
+    
+    # Block 5: Lists
+    lists_md = format_lists(structured_content['lists'])
+    if lists_md:
+        blocks.append((BLOCK_TYPES["lists"], lists_md))
+    
+    # Block 6: Tables
+    tables_md = format_tables(structured_content['tables'])
+    if tables_md:
+        blocks.append((BLOCK_TYPES["tables"], tables_md))
+    
+    # Block 7: Links
+    links_md = format_links(structured_content['links'])
+    if links_md:
+        blocks.append((BLOCK_TYPES["links"], links_md))
+    
+    return blocks
 
 
 def html_to_markdown(
