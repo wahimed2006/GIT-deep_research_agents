@@ -40,7 +40,7 @@ while True:
         print(f"\n=== Sub-request {i}: {question} ===\n")
         
         # Search web
-        web_search = search_web(query=question, max_results=25)
+        web_search = search_web(query=question, max_results=5)
         print(f"Found {len(web_search)} results\n")
         
         # Score each result
