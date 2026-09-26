@@ -6,7 +6,7 @@ if __package__ is None or __package__ == "":
     sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
     __package__ = "src.agents"
 
-
+from ..scraper import *
 from .user_input_agent import UserInputAgent
 from .analysis_agent import AnalysisWebSearchAgent, ScoreParseError
 from ..tools.web_search import search_web
@@ -16,7 +16,7 @@ user = UserInputAgent("llama3.1:8b")
 analyse = AnalysisWebSearchAgent("llama3.1:8b")
 
 # Test rapide
-response = analyse.chat("Score this: 42", stream=False)
+response = analyse.chat("Score this: 42", stream=True)
 print(f"Test response: '{response.content}'")
 
 while True:

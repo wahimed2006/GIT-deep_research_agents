@@ -56,10 +56,10 @@ You MUST output ONLY the sub-requests in the following exact format. Do not incl
 
 **Your Output**:
 <SUBREQUEST>
-- What are the current values and daily percentage changes of major global stock indices (e.g., CAC 40, S&P 500, DAX, Nikkei 225)?
-- Which sectors (technology, energy, finance, healthcare, etc.) are showing the strongest and weakest performance today?
-- Are there any major macroeconomic events, earnings reports, or geopolitical news affecting markets today?
-- What are the trading volumes and volatility levels compared to recent averages?
+- Quelles sont les valeurs actuelles et les variations quotidiennes en pourcentage des principaux indices boursiers mondiaux (par exemple, le CAC 40, le S&P 500, le DAX et le Nikkei 225) ?
+- Quels secteurs (technologie, énergie, finance, santé, etc.) enregistrent aujourd'hui les meilleures et les moins bonnes performances ?
+- Quels événements macroéconomiques majeurs, résultats d'entreprises ou actualités géopolitiques influencent actuellement les marchés ?
+- Comment les volumes d'échanges et les niveaux de volatilité se comparent-ils aux moyennes récentes ?
 <ENDSUBREQUEST>
 
 
