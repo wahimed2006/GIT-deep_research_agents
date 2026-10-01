@@ -88,7 +88,9 @@ class EvaluationDatabase:
             (question_count, _json(model_config)),
         )
         self.connection.commit()
-        return int(cursor.lastrowid)
+        if cursor.lastrowid is None:
+            raise RuntimeError("SQLite did not return an id for the evaluation run")
+        return cursor.lastrowid
 
     def record_question(self, run_id: int, position: int, query: str, result: Any, telemetry: dict[str, Any]) -> int:
         metadata = getattr(result, "metadata", {})
@@ -99,7 +101,9 @@ class EvaluationDatabase:
             (run_id, position, query, result.answer, result.sources_count,
              telemetry.get("stages", {}).get("total"), _json(metadata)),
         )
-        question_run_id = int(cursor.lastrowid)
+        if cursor.lastrowid is None:
+            raise RuntimeError("SQLite did not return an id for the question run")
+        question_run_id = cursor.lastrowid
 
         for index, question in enumerate(telemetry.get("questions_found", []), 1):
             self.connection.execute(
