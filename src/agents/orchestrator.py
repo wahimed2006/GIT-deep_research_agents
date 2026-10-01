@@ -129,6 +129,9 @@ class ResearchOrchestrator:
         Returns:
             Extracted info dict or None if failed.
         """
+        import time
+
+        started_at = time.perf_counter()
         link = result.get('link', '')
         body = result.get('body', '')
         
@@ -145,6 +148,8 @@ class ResearchOrchestrator:
                 'extracted_info': body,
                 'tool_calls': [],
                 'tool_results': [],
+                'scrape_data': {'success': True, 'method': 'search_snippet', 'markdown_length': len(body)},
+                'duration_seconds': time.perf_counter() - started_at,
             }
         
         print(f"  [Scraping] {link}...")
@@ -184,6 +189,8 @@ Extract information that answers the query."""
                 'extracted_info': response.content,
                 'tool_calls': response.tool_calls,
                 'tool_results': response.tool_results,
+                'scrape_data': scrape_result,
+                'duration_seconds': time.perf_counter() - started_at,
             }
         else:
             print(f"  [FAIL] Scraping failed: {scrape_result.get('error', 'unknown error')}")
@@ -196,20 +203,30 @@ Extract information that answers the query."""
         max_sources: int = 3,
         min_score: int = 75,
         parallel_workers: int = 3,
+        telemetry: Dict[str, Any] | None = None,
     ) -> ResearchResult:
         """Execute full research workflow for a query."""
         import time
-        start_time = time.time()
+        start_time = time.perf_counter()
+        telemetry = telemetry if telemetry is not None else {}
+        telemetry.update({"query": query, "stages": {}, "questions_found": [], "search_results": [], "ranked_results": [], "selected_results": [], "scrape_results": []})
+
+        def mark_stage(name: str, started: float) -> None:
+            telemetry["stages"][name] = time.perf_counter() - started
         
         # Step 1: Decompose query
         print(f"\n[Decomposition] Breaking down query...")
+        stage_started = time.perf_counter()
         questions = self.user_agent.chat(query, stream=True)
         self.user_agent.reset()
         content = self.user_agent.parse_subrequests(questions.content)
+        telemetry["questions_found"] = content
+        mark_stage("decomposition", stage_started)
         
         # Step 2: Collect search results with error handling
         all_search_results: List[Dict[str, Any]] = []
         
+        stage_started = time.perf_counter()
         for index, question in enumerate(content, 1):
             print(f"\n=== Sub-request {index}: {question} ===\n")
             
@@ -224,10 +241,13 @@ Extract information that answers the query."""
             except Exception as e:
                 print(f"  ✗ Search failed for '{question}': {e}")
                 # Continue with other sub-questions
+            telemetry["search_results"] = all_search_results
+            mark_stage("search", stage_started)
         
         # Handle no results
         if not all_search_results:
-            elapsed_time = time.time() - start_time
+            elapsed_time = time.perf_counter() - start_time
+            telemetry["stages"]["total"] = elapsed_time
             return ResearchResult(
                 answer=f"Aucun résultat trouvé pour : {query}",
                 query=query,
@@ -243,6 +263,7 @@ Extract information that answers the query."""
         # Step 3: Score all results in batch
         print(f"\n[Analyse] Scoring en batch de {len(all_search_results)} résultats...")
         
+        stage_started = time.perf_counter()
         try:
             analysed = self.analysis_agent.web_search_score(
                 query=query,
@@ -258,6 +279,8 @@ Extract information that answers the query."""
             print(f"  ✗ Scoring failed: {e}")
             # Fallback: use all results with score 50
             analysed = [{**r, 'relevance_score': 50} for r in all_search_results]
+        telemetry["ranked_results"] = analysed
+        mark_stage("analysis", stage_started)
         
         # Step 4: Filter top sources
         if analysed:
@@ -272,10 +295,12 @@ Extract information that answers the query."""
                 top_results = [analysed[0]]
         else:
             top_results = []
+        telemetry["selected_results"] = top_results
         
         # Step 5: Parallel scraping
         print(f"\n[Scraping] {len(top_results)} sources to process (parallel)...")
         
+        stage_started = time.perf_counter()
         final_responses = []
         with ThreadPoolExecutor(max_workers=parallel_workers) as executor:
             futures = [
@@ -286,8 +311,11 @@ Extract information that answers the query."""
                 response = future.result()
                 if response:
                     final_responses.append(response)
+            telemetry["scrape_results"] = final_responses
+            mark_stage("scraping", stage_started)
         
         # Step 6: Synthesize final answer
+        stage_started = time.perf_counter()
         if final_responses:
             final_answer = self.synthesis_agent.synthesize(
                 query=query,
@@ -297,9 +325,11 @@ Extract information that answers the query."""
             self.synthesis_agent.reset()
         else:
             final_answer = "No usable source could be scraped for this question."
+        mark_stage("synthesis", stage_started)
         
         # Step 7: Build result
-        elapsed_time = time.time() - start_time
+        elapsed_time = time.perf_counter() - start_time
+        telemetry["stages"]["total"] = elapsed_time
         
         result = ResearchResult(
             answer=final_answer,
