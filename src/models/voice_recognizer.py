@@ -14,13 +14,13 @@ Features:
 
 Example:
     >>> # Initialize and use
-    >>> voice_model = VoiceToTextModel(device_index=2)
+    >>> voice_model = VoiceToTextModel(device_index=3)
     >>> text = voice_model.listen_and_transcribe()
     >>> print(f"You said: {text}")
     
     >>> # Custom configuration
     >>> voice_model = VoiceToTextModel(
-    ...     device_index=2,
+    ...     device_index=3,
     ...     energy_threshold=0.005,
     ...     silence_duration=1.5
     ... )
@@ -30,7 +30,6 @@ Example:
 from __future__ import annotations
 
 import queue
-import sys
 import logging
 from typing import Optional
 import numpy as np
@@ -46,7 +45,7 @@ from faster_whisper import WhisperModel
 SAMPLE_RATE: int = 16000
 """Target sample rate for Whisper transcription (16kHz)."""
 
-DEFAULT_CAPTURE_DEVICE: int = 2
+DEFAULT_CAPTURE_DEVICE: int = 3
 """Default capture device index (fifine USB microphone)."""
 
 CAPTURE_SAMPLE_RATE: int = 44100
@@ -112,14 +111,14 @@ class VoiceToTextModel:
     
     Example:
         >>> # Basic usage
-        >>> voice_model = VoiceToTextModel(device_index=2)
+        >>> voice_model = VoiceToTextModel(device_index=3)
         >>> text = voice_model.listen_and_transcribe()
         >>> if text:
         ...     print(f"You said: {text}")
         
         >>> # Custom configuration
         >>> voice_model = VoiceToTextModel(
-        ...     device_index=2,
+        ...     device_index=3,
         ...     energy_threshold=0.005,
         ...     silence_duration=1.5,
         ...     model_size="base"
@@ -146,7 +145,7 @@ class VoiceToTextModel:
         Args:
             device_index: Sounddevice device index for the microphone.
                          Use sd.query_devices() to find available devices.
-                         Default: 2 (fifine USB microphone).
+                         Default: 3 (fifine USB microphone).
             model_size: Whisper model size ('tiny', 'base', 'small', 'medium', 'large').
                        'small' provides good accuracy/speed balance.
                        'base' is faster but less accurate.
@@ -219,10 +218,6 @@ class VoiceToTextModel:
             This function runs in a separate thread and must be fast.
             It only copies audio data to the queue, no processing.
         """
-        if status:
-            logger.warning(f"Audio callback status: {status}")
-            print(f"[Audio Warning] {status}", file=sys.stderr)
-        
         # Convert stereo to mono if needed, or extract mono channel
         mono = indata.mean(axis=1) if indata.ndim > 1 and indata.shape[1] > 1 else indata[:, 0]
         self.audio_queue.put(mono.copy())
@@ -339,7 +334,7 @@ class VoiceToTextModel:
             Empty string if no speech was detected or an error occurred.
         
         Example:
-            >>> voice_model = VoiceToTextModel(device_index=2)
+            >>> voice_model = VoiceToTextModel(device_index=3)
             >>> text = voice_model.listen_and_transcribe()
             >>> if text:
             ...     print(f"You said: {text}")
@@ -365,7 +360,7 @@ class VoiceToTextModel:
                            Use Ctrl+C to stop the loop.
         
         Example:
-            >>> voice_model = VoiceToTextModel(device_index=2)
+            >>> voice_model = VoiceToTextModel(device_index=3)
             >>> voice_model.listen_loop()  # Infinite loop
             >>> # Or limited:
             >>> voice_model.listen_loop(max_iterations=10)
@@ -440,7 +435,7 @@ if __name__ == "__main__":
     
     # Initialize VoiceToTextModel
     voice_model = VoiceToTextModel(
-        device_index=2,  # Adjust to your device
+        device_index=DEFAULT_CAPTURE_DEVICE,  # Adjust to your device
         model_size="small",
         compute_type="int8",
         energy_threshold=0.001,
