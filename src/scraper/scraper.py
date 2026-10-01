@@ -38,7 +38,8 @@ DEFAULT_MAX_CONCURRENT: int = 3
 TEST_URLS: List[str] = [
     "https://www.wikipedia.org",
     "https://coinmarketcap.com",
-    "https://ollama.com/library/qwen3.8"
+    "https://ollama.com/library/qwen3.8",
+    "https://www.dicofr.com/surveiller-l-utilisation-cpu-et-ram-en-ligne-de-commande-methodes-simples-pour-analyser-ses-ressources-systeme/"
 ]
 
 
@@ -393,30 +394,105 @@ async def scrape_multiple(
 # =============================================================================
 
 if __name__ == "__main__":
+    import time
+
     async def _main() -> None:
         print("Testing scraper...\n")
+
+        print("=" * 70)
+        print("1. SCRAPE SIMPLE")
+        print("=" * 70)
 
         async with httpx.AsyncClient(
             follow_redirects=True,
             headers={"User-Agent": USER_AGENT},
         ) as client:
+
+            simple_durations = []
+
             for url in TEST_URLS:
-                print(f"Scraping: {url}")
+                print(f"\nScraping: {url}")
+
+                start = time.perf_counter()
+
                 result = await scrape(
                     url,
                     client=client,
                     force_playwright=True,
                 )
 
+                duration = time.perf_counter() - start
+                simple_durations.append(duration)
+
                 if result["success"]:
-                    print(f"  ✓ Success (method: {result['method']})")
-                    print(f"  Title: {result['structured']['metadata'].get('title', 'N/A')}")
-                    print(f"  Paragraphs: {len(result['structured']['paragraphs'])}")
-                    print(f"  Markdown length: {len(result['markdown']) if result['markdown'] else 0}")
-                    print(result['markdown'])
+                    print(f"  ✓ Success")
+                    print(f"  Method: {result['method']}")
+                    print(
+                        f"  Title: "
+                        f"{result['structured']['metadata'].get('title', 'N/A')}"
+                    )
+                    print(
+                        f"  Paragraphs: "
+                        f"{len(result['structured']['paragraphs'])}"
+                    )
+                    print(
+                        f"  Markdown length: "
+                        f"{len(result['markdown']) if result['markdown'] else 0}"
+                    )
                 else:
                     print(f"  ✗ Failed: {result['error']}")
 
-                print()
+                print(f"  ⏱ Duration: {duration:.2f}s")
+
+        print("\n")
+        print("=" * 70)
+        print("2. SCRAPE MULTIPLE")
+        print("=" * 70)
+
+        start = time.perf_counter()
+
+        results = await scrape_multiple(
+            TEST_URLS,
+            max_concurrent=6,
+            max_playwright_concurrent=2,
+        )
+
+        multi_duration = time.perf_counter() - start
+
+        for url, result in zip(TEST_URLS, results):
+            print(f"\n{url}")
+
+            if result["success"]:
+                print("  ✓ Success")
+                print(f"  Method: {result['method']}")
+            else:
+                print(f"  ✗ Failed: {result['error']}")
+
+        print("\n")
+        print("=" * 70)
+        print("3. RÉSULTATS")
+        print("=" * 70)
+
+        total_simple = sum(simple_durations)
+
+        print(f"\nNombre d'URLs       : {len(TEST_URLS)}")
+        print(f"Temps séquentiel    : {total_simple:.2f}s")
+        print(f"Temps parallèle     : {multi_duration:.2f}s")
+
+        if multi_duration > 0:
+            speedup = total_simple / multi_duration
+            print(f"Speedup             : {speedup:.2f}x")
+
+        if total_simple > 0:
+            gain = (1 - multi_duration / total_simple) * 100
+            print(f"Gain de temps       : {gain:.1f}%")
+
+        print(f"\nDurées individuelles:")
+
+        for url, duration in zip(TEST_URLS, simple_durations):
+            print(f"  {duration:7.2f}s  {url}")
+
+        print()
+
 
     asyncio.run(_main())
