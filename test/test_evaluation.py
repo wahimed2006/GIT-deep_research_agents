@@ -1,3 +1,4 @@
+import asyncio
 from pathlib import Path
 
 from src.agents.orchestrator import ResearchOrchestrator
@@ -45,6 +46,15 @@ def fake_search_web(query, max_results):
     }]
 
 
+async def fake_scrape_multiple(urls, **kwargs):
+    return [{
+        "success": True,
+        "url": url,
+        "markdown": "scraped markdown",
+        "method": "fake",
+    } for url in urls]
+
+
 def test_research_records_each_stage(monkeypatch):
     import src.agents.orchestrator as module
 
@@ -55,9 +65,10 @@ def test_research_records_each_stage(monkeypatch):
     orchestrator.scrapping_agent = FakeScrappingAgent()
     orchestrator.synthesis_agent = FakeSynthesisAgent()
     monkeypatch.setattr(module, "search_web", fake_search_web)
+    monkeypatch.setattr(module, "scrape_multiple", fake_scrape_multiple)
 
     telemetry = {}
-    result = orchestrator.research("question test", telemetry=telemetry)
+    result = asyncio.run(orchestrator.research("question test", telemetry=telemetry))
 
     assert result.answer == "Réponse synthétique"
     assert telemetry["questions_found"] == ["sous-question test"]

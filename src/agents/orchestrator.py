@@ -672,9 +672,14 @@ class ResearchOrchestrator:
                     if scrape_result.get("success"):
 
                         final_responses.append({
-                            **result,
-                            **scrape_result,
-                            "source_url": result.get("link"),
+                            "query": query,
+                            "source_url": result.get("link", scrape_result.get("url", "")),
+                            "source_title": result.get("title", ""),
+                            "relevance_score": result.get("relevance_score", 0),
+                            "extracted_info": scrape_result.get("markdown", ""),
+                            "tool_calls": [],
+                            "tool_results": [],
+                            "scrape_data": scrape_result,
                         })
 
                     else:

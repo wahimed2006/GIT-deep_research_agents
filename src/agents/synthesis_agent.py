@@ -74,10 +74,10 @@ class SynthesisAgent(SimpleAgent):
         """
         # Build source context
         source_context = "\n\n".join([
-            f"Source: {src['source_url']}\n"
-            f"Title: {src['source_title']}\n"
-            f"Relevance: {src['relevance_score']}/100\n"
-            f"Extracted information:\n{src['extracted_info']}"
+            f"Source: {src.get('source_url', src.get('url', ''))}\n"
+            f"Title: {src.get('source_title', src.get('title', ''))}\n"
+            f"Relevance: {src.get('relevance_score', 0)}/100\n"
+            f"Extracted information:\n{src.get('extracted_info', src.get('markdown', ''))}"
             for src in extracted_sources
         ])
         
