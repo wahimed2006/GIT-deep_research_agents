@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import argparse
+import asyncio
 import json
 import sys
 from pathlib import Path
@@ -42,7 +43,7 @@ def run(questions_path: Path, database_path: Path, export_path: Path, limit: int
             telemetry: dict[str, Any] = {}
             print(f"[{position}/{len(questions)}] {query}")
             try:
-                result = orchestrator.research(query, telemetry=telemetry)
+                result = asyncio.run(orchestrator.research(query, telemetry=telemetry))
                 database.record_question(run_id, position, query, result, telemetry)
                 export["results"].append({
                     "position": position,
