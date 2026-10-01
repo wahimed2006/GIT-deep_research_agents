@@ -8,7 +8,7 @@ import httpx
 from playwright.sync_api import Browser, Page, sync_playwright
 from typing import Literal, Optional, Dict, Any, List, Set
 from datetime import datetime
-
+import asyncio
 
 # =============================================================================
 # TYPE ALIASES
@@ -58,6 +58,21 @@ JS_SIGNATURES: Set[str] = {'fetch(', 'axios'}
 ROOT_DIV_PATTERNS: Set[str] = {'id="root"', "id='root'"}
 MAX_EMPTY_ROOT_LENGTH: int = 2000
 
+
+DEFAULT_MAX_HTTP_CONNECTIONS = 8
+DEFAULT_MAX_KEEPALIVE_CONNECTIONS = 8
+
+ASYNC_LIMITS = httpx.Limits(
+    max_connections=DEFAULT_MAX_HTTP_CONNECTIONS,
+    max_keepalive_connections=DEFAULT_MAX_KEEPALIVE_CONNECTIONS,
+)
+
+USER_AGENT = (
+    "Mozilla/5.0 (X11; Linux x86_64) "
+    "AppleWebKit/537.36 "
+    "(KHTML, like Gecko) "
+    "Chrome/140.0.0.0 Safari/537.36"
+)
 
 # =============================================================================
 # EXCEPTIONS
@@ -262,88 +277,185 @@ def is_js_heavy(html: str) -> bool:
     
     return False
 
+async def fetch_with_httpx_async(
+    client: httpx.AsyncClient,
+    url: str,
+    timeout: int = DEFAULT_HTTPX_TIMEOUT,
+) -> Dict[str, Any]:
+    """
+    Fetch HTML asynchronously using a shared httpx.AsyncClient.
+    """
 
-def fetch_content(
+    try:
+        response = await client.get(
+            url,
+            timeout=timeout,
+            follow_redirects=True,
+            headers={"User-Agent": USER_AGENT},
+        )
+
+        response.raise_for_status()
+
+        return {
+            "html": response.text,
+            "status_code": response.status_code,
+            "method": "httpx",
+            "timestamp": datetime.now().isoformat(),
+            "url": str(response.url),
+            "success": True,
+        }
+
+    except httpx.HTTPStatusError as e:
+        raise FetchError(
+            f"HTTP error {e.response.status_code}: {e}"
+        )
+
+    except httpx.RequestError as e:
+        raise FetchError(f"Request failed: {e}")
+
+    except Exception as e:
+        raise FetchError(f"Unexpected error: {e}")
+
+
+async def fetch_content(
+    client: httpx.AsyncClient,
     url: str,
     timeout_httpx: int = DEFAULT_HTTPX_TIMEOUT,
     timeout_playwright: int = DEFAULT_PLAYWRIGHT_TIMEOUT,
     force_playwright: bool = False,
-    session: Optional[PlaywrightSession] = None
+    playwright_semaphore: Optional[asyncio.Semaphore] = None,
 ) -> Dict[str, Any]:
     """Fetch HTML content with automatic JS detection.
-    
-    Tries httpx first, then falls back to Playwright if the site
-    appears to be JavaScript-heavy or if httpx returns empty content.
-    
-    Args:
-        url: The URL to fetch.
-        timeout_httpx: Timeout for httpx requests in seconds.
-        timeout_playwright: Timeout for Playwright in seconds.
-        force_playwright: If True, skip httpx and use Playwright directly.
-        session: Optional reusable Playwright session for Playwright fallbacks.
-    
-    Returns:
-        Dictionary with 'html', 'method', 'success', 'url', 'timestamp' keys.
-        If failed, 'success' is False and 'error' contains the error message.
-    
-    Example:
-        >>> result = fetch_content("https://example.com")
-        >>> if result["success"]:
-        ...     print(f"Fetched with {result['method']}")
-        ...     html = result["html"]
-    """
-    # Force Playwright if requested
+        
+        Tries httpx first, then falls back to Playwright if the site
+        appears to be JavaScript-heavy or if httpx returns empty content.
+        
+        Args:
+            url: The URL to fetch.
+            timeout_httpx: Timeout for httpx requests in seconds.
+            timeout_playwright: Timeout for Playwright in seconds.
+            force_playwright: If True, skip httpx and use Playwright directly.
+            session: Optional reusable Playwright session for Playwright fallbacks.
+        
+        Returns:
+            Dictionary with 'html', 'method', 'success', 'url', 'timestamp' keys.
+            If failed, 'success' is False and 'error' contains the error message.
+        
+        Example:
+            >>> result = fetch_content("https://example.com")
+            >>> if result["success"]:
+            ...     print(f"Fetched with {result['method']}")
+            ...     html = result["html"]
+        """
+
+    # ---------------------------------------------------------
+    # Force Playwright
+    # ---------------------------------------------------------
+
     if force_playwright:
         try:
-            return fetch_with_playwright(
+            if playwright_semaphore is not None:
+                async with playwright_semaphore:
+                    return await asyncio.to_thread(
+                        fetch_with_playwright,
+                        url,
+                        timeout_playwright,
+                    )
+
+            return await asyncio.to_thread(
+                fetch_with_playwright,
                 url,
-                timeout=timeout_playwright,
-                session=session
+                timeout_playwright,
             )
+
         except FetchError as e:
             return {
                 "url": url,
                 "success": False,
                 "error": str(e),
                 "method": "playwright",
-                "timestamp": datetime.now().isoformat()
+                "timestamp": datetime.now().isoformat(),
             }
-    
-    # Try httpx first
+
+    # ---------------------------------------------------------
+    # HTTPX
+    # ---------------------------------------------------------
+
     try:
-        result = fetch_with_httpx(url, timeout=timeout_httpx)
+        result = await fetch_with_httpx_async(
+            client=client,
+            url=url,
+            timeout=timeout_httpx,
+        )
+
         html = result["html"]
-        
-        # Check if JS-heavy
+
+        # -----------------------------------------------------
+        # JS-heavy detection
+        # -----------------------------------------------------
+
         if is_js_heavy(html):
-            # Try Playwright for better content
+
             try:
-                pw_result = fetch_with_playwright(
-                    url,
-                    timeout=timeout_playwright,
-                    session=session
-                )
-                # Use Playwright result if it has more content
-                if len(pw_result["html"]) > len(html) * DEFAULT_CONTENT_MULTIPLIER:
+                if playwright_semaphore is not None:
+                    async with playwright_semaphore:
+                        pw_result = await asyncio.to_thread(
+                            fetch_with_playwright,
+                            url,
+                            timeout_playwright,
+                        )
+                else:
+                    pw_result = await asyncio.to_thread(
+                        fetch_with_playwright,
+                        url,
+                        timeout_playwright,
+                    )
+
+                if (
+                    pw_result["success"]
+                    and len(pw_result["html"])
+                    > len(html) * DEFAULT_CONTENT_MULTIPLIER
+                ):
                     return pw_result
+
             except FetchError:
                 pass
-        
+
         return result
-    
-    except FetchError as e:
-        # Fallback to Playwright
+
+    except FetchError as httpx_error:
+
+        # -----------------------------------------------------
+        # HTTPX failed → Playwright fallback
+        # -----------------------------------------------------
+
         try:
-            return fetch_with_playwright(
-                url,
-                timeout=timeout_playwright,
-                session=session
-            )
+
+            if playwright_semaphore is not None:
+                async with playwright_semaphore:
+                    pw_result = await asyncio.to_thread(
+                        fetch_with_playwright,
+                        url,
+                        timeout_playwright,
+                    )
+            else:
+                pw_result = await asyncio.to_thread(
+                    fetch_with_playwright,
+                    url,
+                    timeout_playwright,
+                )
+
+            return pw_result
+
         except FetchError as pw_error:
+
             return {
                 "url": url,
                 "success": False,
-                "error": f"httpx failed: {e}, Playwright failed: {pw_error}",
+                "error": (
+                    f"httpx failed: {httpx_error}, "
+                    f"Playwright failed: {pw_error}"
+                ),
                 "method": "fallback",
-                "timestamp": datetime.now().isoformat()
+                "timestamp": datetime.now().isoformat(),
             }
