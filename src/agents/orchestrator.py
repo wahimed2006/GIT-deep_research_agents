@@ -649,9 +649,9 @@ class ResearchOrchestrator:
 
             # Extract URLs from the selected search results.
             urls = [
-                result["url"]
+                result["link"]
                 for result in top_results
-                if result.get("url")
+                if result.get("link")
             ]
 
             if urls:
@@ -674,13 +674,14 @@ class ResearchOrchestrator:
                         final_responses.append({
                             **result,
                             **scrape_result,
+                            "source_url": result.get("link"),
                         })
 
                     else:
 
                         print(
                             f"  ✗ Scraping failed: "
-                            f"{result.get('url', 'N/A')} - "
+                            f"{result.get('link', 'N/A')} - "
                             f"{scrape_result.get('error', 'Unknown error')}"
                         )
 
