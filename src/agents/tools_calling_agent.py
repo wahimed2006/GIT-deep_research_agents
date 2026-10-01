@@ -208,7 +208,8 @@ class ToolCallingAgent(Agent):
             model=self.model_name,
             messages=self.messages,
             tools=self.tools,
-            stream=False
+            stream=False,
+            options=self.options
         )
 
         if isinstance(response, dict):

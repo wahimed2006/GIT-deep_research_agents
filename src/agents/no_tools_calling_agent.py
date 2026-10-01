@@ -77,7 +77,8 @@ class SimpleAgent(Agent):
             response = ollama.chat(
                 model=self.model_name,
                 messages=self.messages,
-                stream=stream
+                stream=stream,
+                options=self.options
             )
         except Exception as e:
             # Remove the user message if the API call fails
