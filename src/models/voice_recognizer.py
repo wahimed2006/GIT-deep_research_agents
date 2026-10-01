@@ -65,7 +65,7 @@ DEFAULT_SILENCE_DURATION: float = 1.2
 DEFAULT_MAX_RECORDING_SEC: float = 20
 """Maximum recording duration (seconds) to prevent infinite capture."""
 
-WHISPER_MODEL_SIZE: str = "small"
+WHISPER_MODEL_SIZE: str = "base"
 """Whisper model size ('tiny', 'base', 'small', 'medium', 'large')."""
 
 WHISPER_DEVICE: str = "cpu"

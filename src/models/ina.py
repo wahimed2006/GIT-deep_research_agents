@@ -24,7 +24,7 @@ from faster_whisper import WhisperModel
 SAMPLE_RATE: int = 16000
 """Target sample rate for Whisper transcription (16kHz)."""
 
-DEFAULT_CAPTURE_DEVICE: int = 2
+DEFAULT_CAPTURE_DEVICE: int = 3
 """Default capture device index (fifine USB microphone)."""
 
 CAPTURE_SAMPLE_RATE: int = 44100
