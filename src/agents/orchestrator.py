@@ -324,8 +324,8 @@ class ResearchOrchestrator:
     async def research(
         self,
         query: str,
-        max_search_results: int = 5,
-        max_sources: int = 3,
+        max_search_results: int,
+        max_sources: int,
         min_score: int = 75,
         parallel_workers: int = 3,
         telemetry: Dict[str, Any] | None = None,
