@@ -424,7 +424,7 @@ if __name__ == "__main__":
 
     try:
         result = agent.route_config(
-            "Qui est Ninho ?"
+            "RTX 5090 vs RTX 4090"
         )
     except (RuntimeError, ValueError, TypeError) as error:
         print(

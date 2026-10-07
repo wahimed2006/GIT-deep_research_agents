@@ -23,10 +23,27 @@ from .user_input_agent import UserInputAgent
 from .analysis_agent import AnalysisWebSearchAgent
 from .scrapping_agent import ScrappingAgent
 from .synthesis_agent import SynthesisAgent
-from .rooter_agent import RouterAgent
+from .rooter_agent import RouterAgent, ResearchConfig
 from ..scraper import scrape_multiple
 import asyncio
 import httpx
+
+@dataclass
+class QueryPlan:
+    """
+    Execution plan generated from a research configuration.
+
+    The QueryFlow uses this plan to determine how much research to perform,
+    which stages to activate, and how many resources can be consumed.
+    """
+
+    max_subqueries: int
+    max_sources: int
+    max_pages: int
+    use_recent_sources: bool
+    use_comparison: bool
+    use_academic_sources: bool
+    use_verification: bool
 
 
 # =============================================================================
@@ -833,6 +850,31 @@ class ResearchOrchestrator:
         self.analysis_agent.reset()
         self.scrapping_agent.reset()
         self.synthesis_agent.reset()
+        
+    def build_query_plan(self, config: ResearchConfig) -> QueryPlan:
+        """
+        Convert a research configuration into an executable query plan.
+        """
+
+        budgets = {
+            "shallow": (1, 2, 2),
+            "medium": (3, 4, 4),
+            "deep": (6, 8, 8),
+        }
+
+        max_subqueries, max_sources, max_pages = budgets[
+            config.research_depth
+        ]
+
+        return QueryPlan(
+            max_subqueries=max_subqueries,
+            max_sources=max_sources,
+            max_pages=max_pages,
+            use_recent_sources=config.freshness == "high",
+            use_comparison=config.comparison,
+            use_academic_sources=config.academic,
+            use_verification=config.verification,
+        )
 
 
 # =============================================================================
