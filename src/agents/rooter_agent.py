@@ -2,9 +2,13 @@ from __future__ import annotations
 
 import json
 from typing import Any
+import sys
+from pathlib import Path
 
 import ollama
-
+if __package__ is None or __package__ == "":
+    sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
+    __package__ = "src.agents"
 from ..prompt.router_agent_prompt import ROUTER_PROMPT
 from .no_tools_calling_agent import SimpleAgent
 
@@ -302,3 +306,8 @@ class RouterAgent(SimpleAgent):
                 )
 
         return config
+    
+if __name__ == '__main__':
+    agent = RouterAgent()
+    res = agent.route("Qui est ninho")
+    print(res)

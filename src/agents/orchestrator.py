@@ -23,6 +23,7 @@ from .user_input_agent import UserInputAgent
 from .analysis_agent import AnalysisWebSearchAgent
 from .scrapping_agent import ScrappingAgent
 from .synthesis_agent import SynthesisAgent
+from .rooter_agent import RouterAgent
 from ..scraper import scrape_multiple
 import asyncio
 import httpx
@@ -33,10 +34,11 @@ import httpx
 # =============================================================================
 
 MODELS = {
-    "user_input": "llama3.1:8b",
+    "user_input": "llama3.2:3b",
     "analysis": "llama3.2:3b",
     "scrapping": "llama3.2:3b",
     "synthesis": "llama3.2:3b",
+    "router_agent": "llama3.2:3b",
 }
 
 
@@ -117,6 +119,7 @@ class ResearchOrchestrator:
         self.analysis_agent = AnalysisWebSearchAgent(self.models["analysis"])
         self.scrapping_agent = ScrappingAgent(self.models["scrapping"])
         self.synthesis_agent = SynthesisAgent(self.models["synthesis"])
+        self.router_agent = RouterAgent(self.models["router_agent"])
     
     async def process_source(
         self,
